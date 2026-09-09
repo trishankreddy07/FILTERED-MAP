@@ -90,14 +90,15 @@ export default function App() {
   const handleFetchLiveOSM = async () => {
     try {
       setIsLiveLoading(true);
-      setAlertMessage('Scanning OpenStreetMap (OSM) for all hospitals, hotels, & dining...');
-      await axios.post(`/api/v1/places/sync-live?latitude=${userGeo.latitude}&longitude=${userGeo.longitude}&radius_km=${radiusKm}`);
+      setAlertMessage('Scanning OpenStreetMap (OSM) for all hospitals, hotels, attractions, & dining...');
+      const res = await axios.post(`/api/v1/places/sync-osm?lat=${userGeo.latitude}&lng=${userGeo.longitude}&radius_km=${radiusKm}`);
       await fetchPlaces();
       await fetchHealth();
-      setAlertMessage('Live OSM scan complete! All venues successfully indexed.');
+      setAlertMessage(res.data?.message || 'Live OSM scan complete! All venues successfully indexed.');
       setTimeout(() => setAlertMessage(null), 4500);
     } catch (err) {
-      setAlertMessage('OSM sync completed. Local registry updated.');
+      console.error(err);
+      setAlertMessage('OSM sync request completed.');
       setTimeout(() => setAlertMessage(null), 4000);
     } finally {
       setIsLiveLoading(false);

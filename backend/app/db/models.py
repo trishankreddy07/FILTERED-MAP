@@ -13,7 +13,7 @@ class Place(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
-    category = Column(String(100), nullable=False, index=True) # Restaurant, Hospital, Clinic, Pharmacy, Emergency Services
+    category = Column(String(100), nullable=False, index=True)
     latitude = Column(Float, nullable=False, index=True)
     longitude = Column(Float, nullable=False, index=True)
     address = Column(String(500), nullable=True)
@@ -26,6 +26,29 @@ class Place(Base):
     if HAS_GEOALCHEMY and not is_sqlite:
         geom = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
 
+    def __init__(self, **kwargs):
+        if "lat" in kwargs and "latitude" not in kwargs:
+            kwargs["latitude"] = kwargs.pop("lat")
+        if "lng" in kwargs and "longitude" not in kwargs:
+            kwargs["longitude"] = kwargs.pop("lng")
+        super().__init__(**kwargs)
+
+    @property
+    def lat(self):
+        return self.latitude
+    
+    @lat.setter
+    def lat(self, value):
+        self.latitude = value
+
+    @property
+    def lng(self):
+        return self.longitude
+
+    @lng.setter
+    def lng(self, value):
+        self.longitude = value
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -33,6 +56,8 @@ class Place(Base):
             "category": self.category,
             "latitude": self.latitude,
             "longitude": self.longitude,
+            "lat": self.latitude,
+            "lng": self.longitude,
             "address": self.address,
             "rating": self.rating,
             "amenity_type": self.amenity_type,

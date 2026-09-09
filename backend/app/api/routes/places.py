@@ -1,7 +1,8 @@
 import math
 import logging
+import requests
 from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
@@ -9,16 +10,15 @@ from app.db.session import get_db
 from app.db.models import Place
 from app.schemas.place import (
     PlaceResponse, PlaceCreate, GeoJSONFeatureCollection,
-    GeoJSONFeature, GeoJSONGeometry, OSMDataIngestRequest
+    GeoJSONFeature, GeoJSONGeometry
 )
-from scripts.etl_osm_ingest import ingest_osm_for_coordinates
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/places", tags=["Places & POIs"])
 
 def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate the great-circle distance between two points on the Earth in kilometers."""
-    R = 6371.0 # Earth's radius in kilometers
+    R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = (math.sin(dlat / 2) ** 2 +
@@ -26,77 +26,146 @@ def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) ->
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-def generate_local_fallback_pois(center_lat: float, center_lon: float, db: Session) -> List[Place]:
+@router.post("/sync-osm")
+def sync_osm_data(
+    lat: float = Query(..., description="Latitude of active map center"),
+    lng: float = Query(..., description="Longitude of active map center"),
+    radius_km: float = Query(25.0, description="Radius in km to scan"),
+    db: Session = Depends(get_db)
+):
     """
-    Generate realistic critical facilities and tourist attractions around the user's active geographic coordinates.
+    Robust Overpass API sync endpoint with strict timeout and safe category mapping.
     """
-    TEMPLATES = [
-        {"name": "Community General Hospital", "category": "Hospital", "amenity": "hospital", "rating": 4.8, "dist_km": 1.8, "angle": 30, "raw": {"emergency_room": True, "beds": 350, "phone": "+1-800-555-0112", "opening_hours": "24/7"}},
-        {"name": "Apex Trauma & Surgical Center", "category": "Hospital", "amenity": "hospital", "rating": 4.7, "dist_km": 4.2, "angle": 190, "raw": {"trauma_center": True, "beds": 500, "phone": "+1-800-555-0115", "opening_hours": "24/7"}},
-        {"name": "Valley Family Care & Urgent Clinic", "category": "Clinic", "amenity": "clinic", "rating": 4.6, "dist_km": 0.9, "angle": 75, "raw": {"walk_in": True, "phone": "+1-800-555-0133", "opening_hours": "Mo-Sa 08:00-20:00"}},
-        {"name": "Metro Health & Diagnostics Clinic", "category": "Clinic", "amenity": "clinic", "rating": 4.4, "dist_km": 2.4, "angle": 280, "raw": {"xray": True, "telehealth": True, "phone": "+1-800-555-0140", "opening_hours": "Mo-Fr 08:00-19:00"}},
-        {"name": "WellCare 24/7 Pharmacy", "category": "Pharmacy", "amenity": "pharmacy", "rating": 4.6, "dist_km": 0.6, "angle": 120, "raw": {"vaccinations": True, "phone": "+1-800-555-0155", "opening_hours": "24/7"}},
-        {"name": "Central Rx & Compounding Pharmacy", "category": "Pharmacy", "amenity": "pharmacy", "rating": 4.5, "dist_km": 2.1, "angle": 310, "raw": {"drive_through": True, "phone": "+1-800-555-0162", "opening_hours": "Mo-Sa 08:00-22:00"}},
-        {"name": "Station 4 Fire & Emergency Rescue", "category": "Emergency Services", "amenity": "fire_station", "rating": 4.9, "dist_km": 1.4, "angle": 160, "raw": {"ambulance_dispatch": True, "hazmat": True, "phone": "911 / +1-800-555-0188", "opening_hours": "24/7"}},
-        {"name": "District Police & Emergency Operations", "category": "Emergency Services", "amenity": "police", "rating": 4.5, "dist_km": 3.1, "angle": 45, "raw": {"patrol_dispatch": True, "phone": "911 / +1-800-555-0199", "opening_hours": "24/7"}},
-        {"name": "Grand Horizon Luxury Hotel & Suites", "category": "Hotel & Stays", "amenity": "hotel", "rating": 4.8, "dist_km": 1.5, "angle": 140, "raw": {"stars": 4, "phone": "+1-800-555-0205", "website": "https://grandhorizon.local"}},
-        {"name": "The Heritage Kitchen & Hearth", "category": "Restaurant", "amenity": "restaurant", "rating": 4.8, "dist_km": 0.8, "angle": 240, "raw": {"cuisine": "Contemporary Bistro", "price_level": "$$", "phone": "+1-800-555-0210"}},
-        {"name": "Oak & Iron Smokehouse & Grill", "category": "Restaurant", "amenity": "restaurant", "rating": 4.7, "dist_km": 2.7, "angle": 100, "raw": {"cuisine": "Artisan BBQ & Grill", "price_level": "$$", "phone": "+1-800-555-0222"}},
-        {"name": "Sunrise Organic Cafe & Bakery", "category": "Restaurant", "amenity": "restaurant", "rating": 4.6, "dist_km": 1.2, "angle": 330, "raw": {"cuisine": "Cafe & Brunch", "price_level": "$", "phone": "+1-800-555-0244"}},
-        # Tourist & Cultural Landmarks
-        {"name": "City Heritage Museum & Gallery", "category": "Tourist Places", "amenity": "museum", "rating": 4.9, "dist_km": 2.2, "angle": 15, "raw": {"museum_type": "History & Art", "opening_hours": "Tu-Su 10:00-18:00"}},
-        {"name": "Skyline Panoramic Viewpoint & Park", "category": "Tourist Places", "amenity": "viewpoint", "rating": 4.8, "dist_km": 3.5, "angle": 210, "raw": {"view": "City & Bay Panoramic View", "wheelchair": "yes"}},
-        {"name": "Old Town Historic Monument Plaza", "category": "Tourist Places", "amenity": "historic", "rating": 4.7, "dist_km": 1.6, "angle": 290, "raw": {"historic": "monument", "architect": "Heritage Masterworks"}},
-    ]
-
-    new_places = []
-    lat_km = 111.0
-    lon_km = 111.0 * math.cos(math.radians(center_lat)) if math.cos(math.radians(center_lat)) != 0 else 111.0
-
-    for item in TEMPLATES:
-        rad = math.radians(item["angle"])
-        offset_lat = (item["dist_km"] * math.cos(rad)) / lat_km
-        offset_lon = (item["dist_km"] * math.sin(rad)) / lon_km
-
-        p = Place(
-            name=item["name"],
-            category=item["category"],
-            latitude=round(center_lat + offset_lat, 6),
-            longitude=round(center_lon + offset_lon, 6),
-            address=f"Near {item['name']}, Sector {abs(item['angle']) % 20 + 1}",
-            rating=item["rating"],
-            amenity_type=item["amenity"],
-            raw_data=item["raw"]
-        )
-        db.add(p)
-        new_places.append(p)
-
+    radius_meters = int(radius_km * 1000)
+    
+    # Overpass QL - Optimized to prevent 504 Timeouts on 50km radius
+    overpass_url = "https://overpass-api.de/api/interpreter"
+    query = f"""
+    [out:json][timeout:90];
+    (
+      node["amenity"~"hospital|clinic|pharmacy|restaurant|cafe|fast_food|fire_station|police"](around:{radius_meters},{lat},{lng});
+      node["tourism"~"hotel|guest_house|attraction|museum|viewpoint"](around:{radius_meters},{lat},{lng});
+      node["historic"](around:{radius_meters},{lat},{lng});
+    );
+    out center;
+    """
+    
     try:
-        db.commit()
-        for p in new_places:
-            db.refresh(p)
-    except Exception as e:
-        logger.error(f"Failed to commit auto-generated local POIs: {e}")
-        db.rollback()
+        response = requests.post(overpass_url, data={'data': query}, timeout=95)
+        response.raise_for_status()
+        elements = response.json().get("elements", [])
+        
+        added_count = 0
+        for el in elements:
+            tags = el.get("tags", {})
+            name = tags.get("name")
+            if not name:
+                continue # Skip unnamed places
+                
+            lat_val = el.get("lat") or el.get("center", {}).get("lat")
+            lon_val = el.get("lon") or el.get("center", {}).get("lon")
+            if not lat_val or not lon_val:
+                continue
+            
+            # Map OSM tags to categories
+            category = "Other"
+            amenity = tags.get("amenity", "")
+            tourism = tags.get("tourism", "")
+            historic = tags.get("historic", "")
+            
+            if amenity in ["hospital", "clinic", "doctors"]:
+                category = "Hospitals"
+            elif amenity == "pharmacy":
+                category = "Pharmacies"
+            elif amenity in ["fire_station", "police", "ambulance_station"]:
+                category = "Emergency Services"
+            elif amenity in ["restaurant", "cafe", "fast_food"]:
+                category = "Dining & Cafe"
+            elif tourism in ["hotel", "guest_house", "hostel", "motel"]:
+                category = "Hotels & Stays"
+            elif tourism in ["attraction", "museum", "viewpoint", "theme_park"] or historic:
+                category = "Tourist Places"
+            
+            # Check if exists to avoid duplicates
+            existing = db.query(Place).filter(
+                Place.latitude == lat_val,
+                Place.longitude == lon_val
+            ).first()
 
-    return new_places
+            if not existing:
+                new_place = Place(
+                    name=name,
+                    category=category,
+                    latitude=lat_val,
+                    longitude=lon_val,
+                    rating=4.0,
+                    amenity_type=amenity or tourism or historic,
+                    address=tags.get("addr:street", tags.get("addr:city", f"Near {name}")),
+                    raw_data={
+                        "phone": tags.get("phone") or tags.get("contact:phone"),
+                        "opening_hours": tags.get("opening_hours"),
+                        "website": tags.get("website"),
+                        "osm_id": el.get("id")
+                    }
+                )
+                db.add(new_place)
+                added_count += 1
+                
+        db.commit()
+        logger.info(f"Successfully synced {added_count} locations from Overpass API.")
+        return {"message": f"Successfully synced {added_count} new locations from OpenStreetMap.", "added": added_count}
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to fetch from OpenStreetMap: {e}")
+        raise HTTPException(status_code=502, detail=f"Failed to fetch from OpenStreetMap: {str(e)}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Database error during OSM sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+# Alias for sync-live to guarantee backward compatibility
+@router.post("/sync-live")
+def sync_live_alias(
+    latitude: float = Query(..., description="Latitude"),
+    longitude: float = Query(..., description="Longitude"),
+    radius_km: float = Query(25.0, description="Radius in km"),
+    db: Session = Depends(get_db)
+):
+    return sync_osm_data(lat=latitude, lng=longitude, radius_km=radius_km, db=db)
 
 @router.get("", response_model=List[PlaceResponse])
 def get_places(
-    latitude: Optional[float] = Query(None, description="Center latitude for spatial radius query"),
-    longitude: Optional[float] = Query(None, description="Center longitude for spatial radius query"),
+    latitude: Optional[float] = Query(None, description="Center latitude"),
+    longitude: Optional[float] = Query(None, description="Center longitude"),
     radius_km: Optional[float] = Query(25.0, description="Max radius filter in km"),
-    category: Optional[str] = Query(None, description="Filter by category (Restaurant, Hospital, Clinic, Pharmacy, Emergency Services, Hotel & Stays, Tourist Places)"),
-    search: Optional[str] = Query(None, description="Text search by place name or address"),
-    min_rating: Optional[float] = Query(0.0, description="Filter by minimum rating (0 to 5)"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    search: Optional[str] = Query(None, description="Search term"),
+    min_rating: Optional[float] = Query(0.0, description="Minimum rating"),
     limit: int = Query(1000, ge=1, le=5000),
     db: Session = Depends(get_db)
 ):
-    """Retrieve all POIs with dynamic OSM ingestion and spatial radius filtering."""
+    """Retrieve POIs matching filters and radius."""
     query = db.query(Place)
 
+    # Normalize category filtering to handle plural/singular equivalents
     if category and category != "All":
-        query = query.filter(Place.category == category)
+        cat_map = {
+            "Hospital": ["Hospital", "Hospitals"],
+            "Hospitals": ["Hospital", "Hospitals"],
+            "Clinic": ["Clinic", "Clinics", "Hospital", "Hospitals"],
+            "Clinics": ["Clinic", "Clinics", "Hospital", "Hospitals"],
+            "Pharmacy": ["Pharmacy", "Pharmacies"],
+            "Pharmacies": ["Pharmacy", "Pharmacies"],
+            "Emergency Services": ["Emergency Services"],
+            "Restaurant": ["Restaurant", "Dining & Cafe", "Dining & Cafes"],
+            "Dining & Cafe": ["Restaurant", "Dining & Cafe", "Dining & Cafes"],
+            "Dining & Cafes": ["Restaurant", "Dining & Cafe", "Dining & Cafes"],
+            "Hotel & Stays": ["Hotel & Stays", "Hotels & Stays"],
+            "Hotels & Stays": ["Hotel & Stays", "Hotels & Stays"],
+            "Tourist Places": ["Tourist Places"]
+        }
+        allowed = cat_map.get(category, [category])
+        query = query.filter(Place.category.in_(allowed))
 
     if search:
         search_pattern = f"%{search}%"
@@ -113,7 +182,6 @@ def get_places(
 
     results = query.all()
 
-    # Apply spatial distance calculations & radius filtering
     output = []
     for place in results:
         dist = None
@@ -126,47 +194,6 @@ def get_places(
         item_dict["distance_km"] = dist
         output.append(item_dict)
 
-    # Convert radius_km to meters for Overpass around query
-    radius_meters = int(max(radius_km, 1.0) * 1000)
-
-    # Dynamic Overpass ingestion: If fewer than 25 venues exist for the area or zero for the selected category
-    needs_osm_scan = (
-        latitude is not None and longitude is not None and
-        not search and min_rating == 0 and
-        (len(output) < 25 or (category and category != "All" and len(output) == 0))
-    )
-
-    if needs_osm_scan:
-        logger.info(f"Triggering live OSM scan for ({latitude}, {longitude}) with radius {radius_meters}m...")
-        count_ingested = ingest_osm_for_coordinates(latitude, longitude, radius_meters, db)
-        
-        if count_ingested > 0 or len(output) == 0:
-            fresh_query = db.query(Place)
-            if category and category != "All":
-                fresh_query = fresh_query.filter(Place.category == category)
-            fresh_places = fresh_query.all()
-            
-            output = []
-            for place in fresh_places:
-                dist = round(haversine_distance_km(latitude, longitude, place.latitude, place.longitude), 2)
-                if dist <= radius_km:
-                    item_dict = place.to_dict()
-                    item_dict["distance_km"] = dist
-                    output.append(item_dict)
-
-        # If still 0 (e.g. offline or unmapped coordinate), seed template facilities
-        if len(output) == 0:
-            new_places = generate_local_fallback_pois(latitude, longitude, db)
-            for place in new_places:
-                if category and category != "All" and place.category != category:
-                    continue
-                dist = round(haversine_distance_km(latitude, longitude, place.latitude, place.longitude), 2)
-                if dist <= radius_km:
-                    item_dict = place.to_dict()
-                    item_dict["distance_km"] = dist
-                    output.append(item_dict)
-
-    # Sort by distance if center location provided, else by rating
     if latitude is not None and longitude is not None:
         output.sort(key=lambda x: x["distance_km"] if x["distance_km"] is not None else 99999)
     else:
@@ -174,33 +201,12 @@ def get_places(
 
     return output[:limit]
 
-@router.post("/sync-live")
-def sync_live_osm_data(
-    latitude: float = Query(..., description="Latitude of active map center"),
-    longitude: float = Query(..., description="Longitude of active map center"),
-    radius_km: float = Query(25.0, description="Radius in km to scan"),
-    db: Session = Depends(get_db)
-):
-    """
-    Explicitly trigger live OpenStreetMap Overpass extraction for the current location.
-    """
-    radius_meters = int(min(max(radius_km, 1.0), 100.0) * 1000)
-    count = ingest_osm_for_coordinates(latitude, longitude, radius_meters, db)
-    return {
-        "status": "success",
-        "center": [latitude, longitude],
-        "radius_km": radius_km,
-        "radius_meters": radius_meters,
-        "new_venues_ingested": count
-    }
-
 @router.get("/geojson", response_model=GeoJSONFeatureCollection)
 def get_places_geojson(
     category: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Return POI places formatted as a standard GeoJSON FeatureCollection."""
     query = db.query(Place)
     if category and category != "All":
         query = query.filter(Place.category == category)
@@ -230,7 +236,6 @@ def get_places_geojson(
 
 @router.post("", response_model=PlaceResponse)
 def create_place(place_in: PlaceCreate, db: Session = Depends(get_db)):
-    """Add a new custom POI location."""
     db_place = Place(
         name=place_in.name,
         category=place_in.category,
@@ -248,7 +253,6 @@ def create_place(place_in: PlaceCreate, db: Session = Depends(get_db)):
 
 @router.get("/{place_id}", response_model=PlaceResponse)
 def get_place_detail(place_id: int, db: Session = Depends(get_db)):
-    """Get single POI details."""
     place = db.query(Place).filter(Place.id == place_id).first()
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
