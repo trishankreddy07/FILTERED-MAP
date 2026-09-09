@@ -1,0 +1,175 @@
+[
+  {
+    "name": "St. Jude Central Hospital",
+    "category": "Hospital",
+    "latitude": 37.7749,
+    "longitude": -122.4194,
+    "address": "500 Van Ness Ave, San Francisco, CA 94102",
+    "rating": 4.8,
+    "amenity_type": "healthcare",
+    "raw_data": {
+      "emergency_room": true,
+      "beds": 450,
+      "phone": "+1-415-555-0100",
+      "opening_hours": "24/7"
+    }
+  },
+  {
+    "name": "Mission Bay Medical Clinic",
+    "category": "Clinic",
+    "latitude": 37.7685,
+    "longitude": -122.3892,
+    "address": "1600 4th St, San Francisco, CA 94158",
+    "rating": 4.5,
+    "amenity_type": "healthcare",
+    "raw_data": {
+      "specialties": ["Pediatrics", "Cardiology", "General Practice"],
+      "phone": "+1-415-555-0144",
+      "opening_hours": "Mo-Fr 08:00-18:00"
+    }
+  },
+  {
+    "name": "Golden Gate Health Pharmacy",
+    "category": "Pharmacy",
+    "latitude": 37.7812,
+    "longitude": -122.4115,
+    "address": "888 Market St, San Francisco, CA 94102",
+    "rating": 4.6,
+    "amenity_type": "pharmacy",
+    "raw_data": {
+      "drive_through": false,
+      "compounding": true,
+      "phone": "+1-415-555-0188",
+      "opening_hours": "Mo-Sa 08:00-21:00"
+    }
+  },
+  {
+    "name": "SF Fire Station 1 & Emergency Services",
+    "category": "Emergency Services",
+    "latitude": 37.7841,
+    "longitude": -122.4039,
+    "address": "935 Folsom St, San Francisco, CA 94107",
+    "rating": 4.9,
+    "amenity_type": "fire_station",
+    "raw_data": {
+      "hazmat_unit": true,
+      "ambulance_dispatch": true,
+      "phone": "+1-415-555-0199",
+      "opening_hours": "24/7"
+    }
+  },
+  {
+    "name": "The Gourmet Table & Grill",
+    "category": "Restaurant",
+    "latitude": 37.7895,
+    "longitude": -122.4011,
+    "address": "333 Post St, San Francisco, CA 94108",
+    "rating": 4.7,
+    "amenity_type": "restaurant",
+    "raw_data": {
+      "cuisine": "Californian Modern",
+      "price_level": "$$$",
+      "outdoor_seating": true,
+      "phone": "+1-415-555-0233"
+    }
+  },
+  {
+    "name": "Soma Urgent Care Clinic",
+    "category": "Clinic",
+    "latitude": 37.7798,
+    "longitude": -122.4078,
+    "address": "680 Howard St, San Francisco, CA 94105",
+    "rating": 4.3,
+    "amenity_type": "healthcare",
+    "raw_data": {
+      "walk_in": true,
+      "xray": true,
+      "phone": "+1-415-555-0255",
+      "opening_hours": "Mo-Su 07:00-22:00"
+    }
+  },
+  {
+    "name": "Walgreens Care Pharmacy",
+    "category": "Pharmacy",
+    "latitude": 37.7651,
+    "longitude": -122.4208,
+    "address": "2145 Mission St, San Francisco, CA 94110",
+    "rating": 4.2,
+    "amenity_type": "pharmacy",
+    "raw_data": {
+      "vaccinations": true,
+      "phone": "+1-415-555-0277",
+      "opening_hours": "24/7"
+    }
+  },
+  {
+    "name": "Pacific Bistro & Seafood",
+    "category": "Restaurant",
+    "latitude": 37.7801,
+    "longitude": -122.3920,
+    "address": "500 Terry A Francois Blvd, San Francisco, CA 94158",
+    "rating": 4.6,
+    "amenity_type": "restaurant",
+    "raw_data": {
+      "cuisine": "Seafood & Grill",
+      "price_level": "$$",
+      "phone": "+1-415-555-0299"
+    }
+  },
+  {
+    "name": "Central District Police & Dispatch",
+    "category": "Emergency Services",
+    "latitude": 37.7989,
+    "longitude": -122.4081,
+    "address": "766 Vallejo St, San Francisco, CA 94133",
+    "rating": 4.4,
+    "amenity_type": "police",
+    "raw_data": {
+      "community_center": true,
+      "phone": "+1-415-555-0311",
+      "opening_hours": "24/7"
+    }
+  },
+  {
+    "name": "Kaiser Permanente SF Medical Center",
+    "category": "Hospital",
+    "latitude": 37.7825,
+    "longitude": -122.4385,
+    "address": "2425 Geary Blvd, San Francisco, CA 94115",
+    "rating": 4.7,
+    "amenity_type": "healthcare",
+    "raw_data": {
+      "trauma_center": true,
+      "beds": 600,
+      "phone": "+1-415-555-0350",
+      "opening_hours": "24/7"
+    }
+  },
+  {
+    "name": "Hayes Valley Family Clinic",
+    "category": "Clinic",
+    "latitude": 37.7761,
+    "longitude": -122.4248,
+    "address": "400 Octavia St, San Francisco, CA 94102",
+    "rating": 4.4,
+    "amenity_type": "healthcare",
+    "raw_data": {
+      "telehealth": true,
+      "phone": "+1-415-555-0377"
+    }
+  },
+  {
+    "name": "Urban Harvest Organic Cafe & Dining",
+    "category": "Restaurant",
+    "latitude": 37.7634,
+    "longitude": -122.4215,
+    "address": "798 Valencia St, San Francisco, CA 94110",
+    "rating": 4.8,
+    "amenity_type": "restaurant",
+    "raw_data": {
+      "cuisine": "Vegan & Organic",
+      "price_level": "$$",
+      "phone": "+1-415-555-0399"
+    }
+  }
+]
