@@ -23,13 +23,13 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          cd geopulse/backend
+          cd backend
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run Backend Syntax Check
         run: |
-          cd geopulse/backend
+          cd backend
           python -m py_compile app/main.py app/core/config.py app/db/models.py app/db/session.py
 
   frontend-build:
@@ -45,14 +45,14 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: geopulse/frontend/package.json
+          cache-dependency-path: frontend/package.json
 
       - name: Install Frontend Dependencies
         run: |
-          cd geopulse/frontend
+          cd frontend
           npm ci
 
       - name: Build Frontend Application
         run: |
-          cd geopulse/frontend
+          cd frontend
           npm run build
