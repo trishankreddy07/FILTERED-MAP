@@ -103,7 +103,7 @@ function MapViewController({ center, zoom }) {
   const map = useMap();
   useEffect(() => {
     if (center) {
-      map.flyTo(center, zoom || 14, { duration: 1.2 });
+      map.flyTo(center, zoom || 13, { duration: 1.2 });
     }
   }, [center, zoom, map]);
   return null;
@@ -127,10 +127,10 @@ export default function MapView({
         scrollWheelZoom={true}
         className="w-full h-full"
       >
-        {/* Dark theme tile layer */}
+        {/* OpenStreetMap Standard Tile Layer */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
         />
 

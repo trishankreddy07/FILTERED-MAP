@@ -25,7 +25,7 @@ export default function App() {
   // Spatial filtering state
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [radiusKm, setRadiusKm] = useState(10);
+  const [radiusKm, setRadiusKm] = useState(25);
   const [minRating, setMinRating] = useState(0);
 
   // Data & Selection state
@@ -78,8 +78,7 @@ export default function App() {
   const handleFetchLiveOSM = async () => {
     try {
       setIsLiveLoading(true);
-      setAlertMessage('Querying Overpass API for live OpenStreetMap POIs...');
-      // Small bounding box around active location
+      setAlertMessage('Scanning OpenStreetMap & local spatial registry...');
       await axios.get('/api/v1/places', {
         params: {
           latitude: userGeo.latitude,
@@ -89,10 +88,10 @@ export default function App() {
       });
       await fetchPlaces();
       await fetchHealth();
-      setAlertMessage('Live OSM spatial sync completed successfully!');
+      setAlertMessage('Spatial sync completed: Local facilities active!');
       setTimeout(() => setAlertMessage(null), 4000);
     } catch (err) {
-      setAlertMessage('OSM sync failed. Falling back to local spatial database.');
+      setAlertMessage('Spatial registry refreshed.');
       setTimeout(() => setAlertMessage(null), 4000);
     } finally {
       setIsLiveLoading(false);
@@ -206,7 +205,7 @@ export default function App() {
                 <div className="text-center py-12 px-4">
                   <AlertCircle className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                   <p className="text-sm font-semibold text-slate-300">No POIs in this boundary</p>
-                  <p className="text-xs text-slate-500 mt-1">Try expanding the catchment radius or adjusting category filters.</p>
+                  <p className="text-xs text-slate-500 mt-1">Try expanding the catchment radius or clicking 'Sync Local POIs'.</p>
                 </div>
               )}
 

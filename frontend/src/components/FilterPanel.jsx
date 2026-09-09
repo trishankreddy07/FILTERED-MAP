@@ -96,7 +96,7 @@ export default function FilterPanel({
         </div>
       </div>
 
-      {/* Radius Distance Slider */}
+      {/* Radius Distance Slider (1km to 50km) */}
       <div>
         <div className="flex justify-between items-center text-xs mb-1.5">
           <span className="font-medium text-slate-300">Catchment Radius</span>
@@ -107,16 +107,16 @@ export default function FilterPanel({
         <input
           type="range"
           min="1"
-          max="25"
-          step="0.5"
+          max="50"
+          step="1"
           value={radiusKm}
           onChange={(e) => setRadiusKm(parseFloat(e.target.value))}
           className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
         />
         <div className="flex justify-between text-[10px] text-slate-500 mt-1">
           <span>1 km</span>
-          <span>10 km</span>
           <span>25 km</span>
+          <span>50 km</span>
         </div>
       </div>
 
@@ -146,7 +146,7 @@ export default function FilterPanel({
           className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 px-3 py-2 rounded-lg bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 transition-all cursor-pointer"
         >
           <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-          Center User Location
+          SF Demo Center
         </button>
 
         <button
@@ -155,7 +155,7 @@ export default function FilterPanel({
           className="flex items-center gap-1.5 text-xs text-cyan-300 hover:text-cyan-200 px-3 py-2 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/40 border border-cyan-800/50 transition-all cursor-pointer disabled:opacity-50"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLiveLoading ? 'animate-spin' : ''}`} />
-          {isLiveLoading ? 'Ingesting...' : 'Fetch Live OSM'}
+          {isLiveLoading ? 'Scanning...' : 'Sync Local POIs'}
         </button>
       </div>
     </div>
