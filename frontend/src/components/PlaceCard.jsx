@@ -6,6 +6,7 @@ import {
   Siren, 
   UtensilsCrossed, 
   Hotel,
+  Landmark,
   MapPin, 
   Star, 
   Phone, 
@@ -22,6 +23,7 @@ const CATEGORY_CONFIG = {
   'Emergency Services': { icon: Siren, badgeBg: 'bg-red-600/20 text-red-300 border-red-500/40' },
   Restaurant: { icon: UtensilsCrossed, badgeBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30' },
   'Hotel & Stays': { icon: Hotel, badgeBg: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
+  'Tourist Places': { icon: Landmark, badgeBg: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30' },
 };
 
 export default function PlaceCard({ place, onSelect, onGetDirections, isSelected, isNavigatingTo }) {

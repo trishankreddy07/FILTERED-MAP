@@ -41,38 +41,70 @@ AMENITY_CATEGORY_MAP = {
     "motel": "Hotel & Stays",
     "lodging": "Hotel & Stays",
     
+    # Tourist Places & Attractions
+    "attraction": "Tourist Places",
+    "museum": "Tourist Places",
+    "viewpoint": "Tourist Places",
+    "theme_park": "Tourist Places",
+    "gallery": "Tourist Places",
+    "zoo": "Tourist Places",
+    "aquarium": "Tourist Places",
+    "artwork": "Tourist Places",
+    "monument": "Tourist Places",
+    "memorial": "Tourist Places",
+    "castle": "Tourist Places",
+    "archaeological_site": "Tourist Places",
+    "ruins": "Tourist Places",
+    
     # Emergency Services
     "fire_station": "Emergency Services",
     "police": "Emergency Services",
     "ambulance_station": "Emergency Services"
 }
 
-def fetch_osm_around(lat: float, lon: float, radius_m: int = 15000) -> List[Dict[str, Any]]:
+def fetch_osm_around(lat: float, lon: float, radius_m: int = 25000) -> List[Dict[str, Any]]:
     """
     Fetch comprehensive POIs (nodes & ways) around given coordinates within radius in meters.
     """
-    radius_m = min(max(radius_m, 1000), 50000) # Clamp between 1km and 50km
-    logger.info(f"Querying Overpass API for center: ({lat}, {lon}) with radius: {radius_m}m...")
+    radius_meters = int(min(max(radius_m, 1000), 100000)) # Clamped between 1,000m and 100,000m
+    logger.info(f"Querying Overpass API for center: ({lat}, {lon}) with radius: {radius_meters}m...")
 
     overpass_query = f"""
-    [out:json][timeout:30];
+    [out:json][timeout:50];
     (
-      node["amenity"~"hospital|clinic|pharmacy|doctors|dentist|restaurant|cafe|fast_food|food_court|fire_station|police|ambulance_station"](around:{radius_m},{lat},{lon});
-      way["amenity"~"hospital|clinic|pharmacy|doctors|dentist|restaurant|cafe|fast_food|food_court|fire_station|police|ambulance_station"](around:{radius_m},{lat},{lon});
-      node["tourism"~"hotel|guest_house|hostel|motel"](around:{radius_m},{lat},{lon});
-      way["tourism"~"hotel|guest_house|hostel|motel"](around:{radius_m},{lat},{lon});
-      node["healthcare"](around:{radius_m},{lat},{lon});
-      way["healthcare"](around:{radius_m},{lat},{lon});
+      // Healthcare
+      node["amenity"~"hospital|clinic|pharmacy|doctors|dentist"](around:{radius_meters},{lat},{lon});
+      way["amenity"~"hospital|clinic|pharmacy|doctors|dentist"](around:{radius_meters},{lat},{lon});
+      node["healthcare"](around:{radius_meters},{lat},{lon});
+      way["healthcare"](around:{radius_meters},{lat},{lon});
+
+      // Dining & Food
+      node["amenity"~"restaurant|cafe|fast_food|food_court|bar|pub"](around:{radius_meters},{lat},{lon});
+      way["amenity"~"restaurant|cafe|fast_food|food_court|bar|pub"](around:{radius_meters},{lat},{lon});
+
+      // Hospitality & Hotels
+      node["tourism"~"hotel|guest_house|hostel|motel"](around:{radius_meters},{lat},{lon});
+      way["tourism"~"hotel|guest_house|hostel|motel"](around:{radius_meters},{lat},{lon});
+
+      // Tourist Places & Cultural Heritage
+      node["tourism"~"attraction|museum|viewpoint|theme_park|gallery|zoo|aquarium"](around:{radius_meters},{lat},{lon});
+      way["tourism"~"attraction|museum|viewpoint|theme_park|gallery|zoo|aquarium"](around:{radius_meters},{lat},{lon});
+      node["historic"](around:{radius_meters},{lat},{lon});
+      way["historic"](around:{radius_meters},{lat},{lon});
+
+      // Emergency Services
+      node["amenity"~"fire_station|police|ambulance_station"](around:{radius_meters},{lat},{lon});
+      way["amenity"~"fire_station|police|ambulance_station"](around:{radius_meters},{lat},{lon});
     );
     out center;
     """
 
     try:
-        response = requests.post(OVERPASS_URL, data={"data": overpass_query}, timeout=35)
+        response = requests.post(OVERPASS_URL, data={"data": overpass_query}, timeout=45)
         response.raise_for_status()
         data = response.json()
         elements = data.get("elements", [])
-        logger.info(f"Received {len(elements)} elements from Overpass API.")
+        logger.info(f"Received {len(elements)} raw elements from Overpass API.")
         return elements
     except Exception as e:
         logger.error(f"Error querying Overpass API: {e}")
@@ -85,13 +117,16 @@ def transform_osm_element(element: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     
     amenity = tags.get("amenity", "").lower()
     tourism = tags.get("tourism", "").lower()
+    historic = tags.get("historic", "").lower()
     healthcare = tags.get("healthcare", "").lower()
 
     category = None
-    if amenity in AMENITY_CATEGORY_MAP:
+    if historic or tourism in ["attraction", "museum", "viewpoint", "theme_park", "gallery", "zoo", "aquarium", "artwork"]:
+        category = "Tourist Places"
+    elif tourism in ["hotel", "guest_house", "hostel", "motel", "lodging"]:
+        category = "Hotel & Stays"
+    elif amenity in AMENITY_CATEGORY_MAP:
         category = AMENITY_CATEGORY_MAP[amenity]
-    elif tourism in AMENITY_CATEGORY_MAP:
-        category = AMENITY_CATEGORY_MAP[tourism]
     elif healthcare:
         category = "Hospital" if healthcare == "hospital" else "Clinic"
 
@@ -99,7 +134,7 @@ def transform_osm_element(element: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
     if not name:
-        name = f"{category} ({amenity or tourism or 'Local'})"
+        name = f"{category} ({historic or tourism or amenity or 'Local Venue'})"
 
     # Extract coordinates (handles both node lat/lon and way center lat/lon)
     lat = element.get("lat") or element.get("center", {}).get("lat")
@@ -127,7 +162,7 @@ def transform_osm_element(element: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "longitude": float(lon),
         "address": formatted_address,
         "rating": rating,
-        "amenity_type": amenity or tourism or healthcare,
+        "amenity_type": historic or tourism or amenity or healthcare,
         "raw_data": {
             "osm_id": element.get("id"),
             "osm_type": element.get("type"),
@@ -135,12 +170,13 @@ def transform_osm_element(element: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             "opening_hours": tags.get("opening_hours"),
             "website": tags.get("website"),
             "cuisine": tags.get("cuisine"),
+            "historic": tags.get("historic"),
             "stars": tags.get("stars"),
             "wheelchair": tags.get("wheelchair")
         }
     }
 
-def ingest_osm_for_coordinates(lat: float, lon: float, radius_m: int = 15000, db: SessionLocal = None) -> int:
+def ingest_osm_for_coordinates(lat: float, lon: float, radius_m: int = 25000, db: SessionLocal = None) -> int:
     """Extract and load live OSM POIs for a target coordinate."""
     close_db = False
     if db is None:
@@ -181,7 +217,7 @@ def ingest_osm_for_coordinates(lat: float, lon: float, radius_m: int = 15000, db
                 inserted_count += 1
 
         db.commit()
-        logger.info(f"Successfully ingested {inserted_count} new POIs for ({lat}, {lon})")
+        logger.info(f"Successfully ingested {inserted_count} new POIs for ({lat}, {lon}) with radius {radius_m}m")
         return inserted_count
     except Exception as e:
         logger.error(f"Error during OSM ingestion: {e}")
@@ -193,4 +229,4 @@ def ingest_osm_for_coordinates(lat: float, lon: float, radius_m: int = 15000, db
 
 if __name__ == "__main__":
     logger.info("Executing sample Overpass ingest for San Francisco...")
-    ingest_osm_for_coordinates(37.7749, -122.4194, 15000)
+    ingest_osm_for_coordinates(37.7749, -122.4194, 25000)

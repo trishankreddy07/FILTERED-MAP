@@ -28,8 +28,7 @@ def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) ->
 
 def generate_local_fallback_pois(center_lat: float, center_lon: float, db: Session) -> List[Place]:
     """
-    Generate realistic critical facilities around the user's active geographic coordinates
-    so that non-urban, suburban, or newly visited coordinates always have rich local facilities.
+    Generate realistic critical facilities and tourist attractions around the user's active geographic coordinates.
     """
     TEMPLATES = [
         {"name": "Community General Hospital", "category": "Hospital", "amenity": "hospital", "rating": 4.8, "dist_km": 1.8, "angle": 30, "raw": {"emergency_room": True, "beds": 350, "phone": "+1-800-555-0112", "opening_hours": "24/7"}},
@@ -44,6 +43,10 @@ def generate_local_fallback_pois(center_lat: float, center_lon: float, db: Sessi
         {"name": "The Heritage Kitchen & Hearth", "category": "Restaurant", "amenity": "restaurant", "rating": 4.8, "dist_km": 0.8, "angle": 240, "raw": {"cuisine": "Contemporary Bistro", "price_level": "$$", "phone": "+1-800-555-0210"}},
         {"name": "Oak & Iron Smokehouse & Grill", "category": "Restaurant", "amenity": "restaurant", "rating": 4.7, "dist_km": 2.7, "angle": 100, "raw": {"cuisine": "Artisan BBQ & Grill", "price_level": "$$", "phone": "+1-800-555-0222"}},
         {"name": "Sunrise Organic Cafe & Bakery", "category": "Restaurant", "amenity": "restaurant", "rating": 4.6, "dist_km": 1.2, "angle": 330, "raw": {"cuisine": "Cafe & Brunch", "price_level": "$", "phone": "+1-800-555-0244"}},
+        # Tourist & Cultural Landmarks
+        {"name": "City Heritage Museum & Gallery", "category": "Tourist Places", "amenity": "museum", "rating": 4.9, "dist_km": 2.2, "angle": 15, "raw": {"museum_type": "History & Art", "opening_hours": "Tu-Su 10:00-18:00"}},
+        {"name": "Skyline Panoramic Viewpoint & Park", "category": "Tourist Places", "amenity": "viewpoint", "rating": 4.8, "dist_km": 3.5, "angle": 210, "raw": {"view": "City & Bay Panoramic View", "wheelchair": "yes"}},
+        {"name": "Old Town Historic Monument Plaza", "category": "Tourist Places", "amenity": "historic", "rating": 4.7, "dist_km": 1.6, "angle": 290, "raw": {"historic": "monument", "architect": "Heritage Masterworks"}},
     ]
 
     new_places = []
@@ -83,7 +86,7 @@ def get_places(
     latitude: Optional[float] = Query(None, description="Center latitude for spatial radius query"),
     longitude: Optional[float] = Query(None, description="Center longitude for spatial radius query"),
     radius_km: Optional[float] = Query(25.0, description="Max radius filter in km"),
-    category: Optional[str] = Query(None, description="Filter by category (Restaurant, Hospital, Clinic, Pharmacy, Emergency Services, Hotel & Stays)"),
+    category: Optional[str] = Query(None, description="Filter by category (Restaurant, Hospital, Clinic, Pharmacy, Emergency Services, Hotel & Stays, Tourist Places)"),
     search: Optional[str] = Query(None, description="Text search by place name or address"),
     min_rating: Optional[float] = Query(0.0, description="Filter by minimum rating (0 to 5)"),
     limit: int = Query(1000, ge=1, le=5000),
@@ -123,25 +126,36 @@ def get_places(
         item_dict["distance_km"] = dist
         output.append(item_dict)
 
-    # If coordinates provided and zero facilities found within radius, trigger live Overpass fetch or seed
-    if latitude is not None and longitude is not None and len(output) == 0 and not search and min_rating == 0:
-        logger.info(f"0 POIs found near ({latitude}, {longitude}) within {radius_km}km. Querying Overpass API...")
-        count_ingested = ingest_osm_for_coordinates(latitude, longitude, int(radius_km * 1000), db)
+    # Convert radius_km to meters for Overpass around query
+    radius_meters = int(max(radius_km, 1.0) * 1000)
+
+    # Dynamic Overpass ingestion: If fewer than 25 venues exist for the area or zero for the selected category
+    needs_osm_scan = (
+        latitude is not None and longitude is not None and
+        not search and min_rating == 0 and
+        (len(output) < 25 or (category and category != "All" and len(output) == 0))
+    )
+
+    if needs_osm_scan:
+        logger.info(f"Triggering live OSM scan for ({latitude}, {longitude}) with radius {radius_meters}m...")
+        count_ingested = ingest_osm_for_coordinates(latitude, longitude, radius_meters, db)
         
-        if count_ingested > 0:
-            # Query newly ingested records
-            fresh_places = db.query(Place).all()
+        if count_ingested > 0 or len(output) == 0:
+            fresh_query = db.query(Place)
+            if category and category != "All":
+                fresh_query = fresh_query.filter(Place.category == category)
+            fresh_places = fresh_query.all()
+            
             output = []
             for place in fresh_places:
-                if category and category != "All" and place.category != category:
-                    continue
                 dist = round(haversine_distance_km(latitude, longitude, place.latitude, place.longitude), 2)
                 if dist <= radius_km:
                     item_dict = place.to_dict()
                     item_dict["distance_km"] = dist
                     output.append(item_dict)
-        else:
-            # Fallback generator for rural/unmapped areas
+
+        # If still 0 (e.g. offline or unmapped coordinate), seed template facilities
+        if len(output) == 0:
             new_places = generate_local_fallback_pois(latitude, longitude, db)
             for place in new_places:
                 if category and category != "All" and place.category != category:
@@ -170,12 +184,13 @@ def sync_live_osm_data(
     """
     Explicitly trigger live OpenStreetMap Overpass extraction for the current location.
     """
-    radius_m = int(min(max(radius_km, 1.0), 50.0) * 1000)
-    count = ingest_osm_for_coordinates(latitude, longitude, radius_m, db)
+    radius_meters = int(min(max(radius_km, 1.0), 100.0) * 1000)
+    count = ingest_osm_for_coordinates(latitude, longitude, radius_meters, db)
     return {
         "status": "success",
         "center": [latitude, longitude],
         "radius_km": radius_km,
+        "radius_meters": radius_meters,
         "new_venues_ingested": count
     }
 

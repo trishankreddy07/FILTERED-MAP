@@ -11,11 +11,13 @@ import {
   Siren,
   UtensilsCrossed,
   Hotel,
+  Landmark,
   Layers
 } from 'lucide-react';
 
 const CATEGORIES = [
   { id: 'All', label: 'All Places', icon: Layers },
+  { id: 'Tourist Places', label: 'Tourist Places', icon: Landmark },
   { id: 'Hospital', label: 'Hospitals', icon: Hospital },
   { id: 'Clinic', label: 'Clinics', icon: Stethoscope },
   { id: 'Pharmacy', label: 'Pharmacies', icon: Pill },
@@ -66,7 +68,7 @@ export default function FilterPanel({
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by venue name, cuisine, hotel, or street..."
+          placeholder="Search by name, attraction, museum, hotel, or street..."
           className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/50 transition-all"
         />
       </div>
@@ -76,7 +78,7 @@ export default function FilterPanel({
         <label className="block text-xs font-medium text-slate-400 mb-2">
           Venue Category
         </label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {CATEGORIES.map((cat) => {
             const Icon = cat.icon;
             const active = selectedCategory === cat.id;
@@ -84,7 +86,7 @@ export default function FilterPanel({
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategory(cat.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium border transition-all cursor-pointer ${
                   active
                     ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300 shadow-sm shadow-cyan-500/20'
                     : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200'

@@ -16,6 +16,7 @@ import {
   Siren, 
   UtensilsCrossed, 
   Hotel,
+  Landmark,
   MapPin, 
   Star,
   Compass,
@@ -46,6 +47,9 @@ const createCustomIcon = (category, isSelected = false) => {
   } else if (category === 'Hotel & Stays') {
     color = '#8b5cf6'; // Indigo / Violet
     letter = 'H';
+  } else if (category === 'Tourist Places') {
+    color = '#d946ef'; // Fuchsia / Magenta
+    letter = 'T';
   }
 
   const ringClass = isSelected ? 'box-shadow: 0 0 0 4px #38bdf8, 0 0 22px rgba(56, 189, 248, 0.9); transform: scale(1.15);' : 'box-shadow: 0 2px 10px rgba(0,0,0,0.5);';
@@ -346,6 +350,10 @@ export default function MapView({
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
             <span>Hotels (H)</span>
+          </div>
+          <div className="flex items-center gap-2 col-span-2">
+            <span className="w-3 h-3 rounded-full bg-fuchsia-500"></span>
+            <span>Tourist Places (T)</span>
           </div>
         </div>
       </div>
