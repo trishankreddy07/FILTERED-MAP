@@ -5,6 +5,7 @@ import {
   Marker, 
   Popup, 
   Circle, 
+  Polyline,
   useMap 
 } from 'react-leaflet';
 import L from 'leaflet';
@@ -14,8 +15,12 @@ import {
   Pill, 
   Siren, 
   UtensilsCrossed, 
+  Hotel,
   MapPin, 
-  Star 
+  Star,
+  Compass,
+  ExternalLink,
+  Flag
 } from 'lucide-react';
 
 // Custom colored HTML SVG DivIcons for Leaflet
@@ -38,9 +43,12 @@ const createCustomIcon = (category, isSelected = false) => {
   } else if (category === 'Restaurant') {
     color = '#38bdf8'; // Sky
     letter = 'R';
+  } else if (category === 'Hotel & Stays') {
+    color = '#8b5cf6'; // Indigo / Violet
+    letter = 'H';
   }
 
-  const ringClass = isSelected ? 'box-shadow: 0 0 0 4px #38bdf8, 0 0 20px rgba(56, 189, 248, 0.8);' : 'box-shadow: 0 2px 10px rgba(0,0,0,0.5);';
+  const ringClass = isSelected ? 'box-shadow: 0 0 0 4px #38bdf8, 0 0 22px rgba(56, 189, 248, 0.9); transform: scale(1.15);' : 'box-shadow: 0 2px 10px rgba(0,0,0,0.5);';
 
   return L.divIcon({
     className: 'custom-leaflet-marker',
@@ -58,7 +66,7 @@ const createCustomIcon = (category, isSelected = false) => {
         font-size: 13px;
         border: 2px solid white;
         ${ringClass}
-        transition: transform 0.2s ease;
+        transition: all 0.25s ease;
       ">
         ${letter}
       </div>
@@ -72,40 +80,70 @@ const createCustomIcon = (category, isSelected = false) => {
 const userLocationIcon = L.divIcon({
   className: 'custom-user-marker',
   html: `
-    <div style="position: relative; width: 24px; height: 24px;">
+    <div style="position: relative; width: 28px; height: 28px;">
       <div style="
         position: absolute;
-        width: 24px;
-        height: 24px;
+        width: 28px;
+        height: 28px;
         background-color: rgba(6, 182, 212, 0.4);
         border-radius: 50%;
         animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
       "></div>
       <div style="
         position: absolute;
-        top: 3px;
-        left: 3px;
-        width: 18px;
-        height: 18px;
+        top: 4px;
+        left: 4px;
+        width: 20px;
+        height: 20px;
         background-color: #06b6d4;
         border-radius: 50%;
         border: 3px solid white;
-        box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+        box-shadow: 0 0 12px rgba(6, 182, 212, 0.9);
       "></div>
     </div>
   `,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12]
+  iconSize: [28, 28],
+  iconAnchor: [14, 14]
 });
 
-// Component to handle dynamic map panning/zooming
-function MapViewController({ center, zoom }) {
+const destinationIcon = L.divIcon({
+  className: 'custom-dest-marker',
+  html: `
+    <div style="
+      background-color: #ef4444;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 16px;
+      border: 3px solid white;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.8);
+      animation: bounce 1s infinite alternate;
+    ">
+      🏁
+    </div>
+  `,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
+  popupAnchor: [0, -18]
+});
+
+// Component to handle dynamic map panning/zooming and route fitting
+function MapViewController({ center, zoom, routeCoordinates }) {
   const map = useMap();
+
   useEffect(() => {
-    if (center) {
+    if (routeCoordinates && routeCoordinates.length > 1) {
+      const bounds = L.latLngBounds(routeCoordinates);
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+    } else if (center) {
       map.flyTo(center, zoom || 13, { duration: 1.2 });
     }
-  }, [center, zoom, map]);
+  }, [center, zoom, routeCoordinates, map]);
+
   return null;
 }
 
@@ -115,6 +153,8 @@ export default function MapView({
   radiusKm,
   selectedPlace,
   onSelectPlace,
+  onGetDirections,
+  activeRoute,
   showIsochrones = false
 }) {
   const centerPosition = [userLocation.latitude, userLocation.longitude];
@@ -137,13 +177,14 @@ export default function MapView({
         <MapViewController
           center={selectedPlace ? [selectedPlace.latitude, selectedPlace.longitude] : centerPosition}
           zoom={selectedPlace ? 15 : 13}
+          routeCoordinates={activeRoute?.coordinates}
         />
 
         {/* User Origin Center Marker */}
         <Marker position={centerPosition} icon={userLocationIcon}>
           <Popup>
             <div className="p-1 text-slate-100">
-              <strong className="text-cyan-400 block mb-1">Active Spatial Origin</strong>
+              <strong className="text-cyan-400 block mb-1">Active GPS Position</strong>
               <div className="text-xs text-slate-300">
                 Lat: {userLocation.latitude.toFixed(4)}, Lng: {userLocation.longitude.toFixed(4)}
               </div>
@@ -152,7 +193,7 @@ export default function MapView({
         </Marker>
 
         {/* Search Catchment Radius Circle */}
-        {radiusKm && (
+        {radiusKm && !activeRoute && (
           <Circle
             center={centerPosition}
             radius={radiusKm * 1000}
@@ -166,30 +207,57 @@ export default function MapView({
           />
         )}
 
-        {/* Concentric Isochrone Buffer Rings (Optional visual overlay) */}
-        {showIsochrones && (
+        {/* Active Navigation Polyline */}
+        {activeRoute?.coordinates && activeRoute.coordinates.length > 0 && (
           <>
-            <Circle
-              center={centerPosition}
-              radius={1000}
-              pathOptions={{ color: '#10b981', fillOpacity: 0.05, weight: 1 }}
+            {/* Glow background casing line */}
+            <Polyline
+              positions={activeRoute.coordinates}
+              pathOptions={{
+                color: '#0284c7',
+                weight: 8,
+                opacity: 0.45,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }}
             />
-            <Circle
-              center={centerPosition}
-              radius={3000}
-              pathOptions={{ color: '#f59e0b', fillOpacity: 0.04, weight: 1 }}
-            />
-            <Circle
-              center={centerPosition}
-              radius={5000}
-              pathOptions={{ color: '#f43f5e', fillOpacity: 0.03, weight: 1 }}
+            {/* Foreground crisp path line */}
+            <Polyline
+              positions={activeRoute.coordinates}
+              pathOptions={{
+                color: '#38bdf8',
+                weight: 5,
+                opacity: 0.95,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }}
             />
           </>
+        )}
+
+        {/* Destination Pin Marker when Route Active */}
+        {activeRoute?.destination && (
+          <Marker
+            position={[activeRoute.destination.latitude, activeRoute.destination.longitude]}
+            icon={destinationIcon}
+          >
+            <Popup>
+              <div className="p-1 text-slate-100">
+                <strong className="text-rose-400 block mb-1">🏁 Destination</strong>
+                <div className="text-xs font-semibold">{activeRoute.destination.name}</div>
+                <div className="text-xs text-cyan-400 mt-1">
+                  {activeRoute.distance_km} km ({activeRoute.duration_mins} mins away)
+                </div>
+              </div>
+            </Popup>
+          </Marker>
         )}
 
         {/* POI Place Markers */}
         {places.map((place) => {
           const isSelected = selectedPlace?.id === place.id;
+          const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${place.latitude},${place.longitude}&travelmode=driving`;
+
           return (
             <Marker
               key={place.id}
@@ -200,7 +268,7 @@ export default function MapView({
               }}
             >
               <Popup>
-                <div className="p-1 text-slate-100 max-w-[220px]">
+                <div className="p-1 text-slate-100 max-w-[240px]">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/40">
                       {place.category}
@@ -218,10 +286,30 @@ export default function MapView({
                     <p className="text-xs text-slate-400 mb-2">{place.address}</p>
                   )}
                   {place.distance_km !== undefined && (
-                    <div className="text-xs text-cyan-400 font-medium">
-                      {place.distance_km} km from active origin
+                    <div className="text-xs text-cyan-400 font-medium mb-3">
+                      {place.distance_km} km from active GPS
                     </div>
                   )}
+
+                  {/* Popup Action Buttons */}
+                  <div className="pt-2 border-t border-slate-700/80 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => onGetDirections(place)}
+                      className="flex-1 py-1.5 px-2 rounded-md bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer"
+                    >
+                      <Compass className="w-3.5 h-3.5" />
+                      Directions
+                    </button>
+                    <a
+                      href={googleMapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-1.5 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center justify-center gap-1 transition-all cursor-pointer border border-slate-700"
+                    >
+                      <ExternalLink className="w-3 h-3 text-cyan-400" />
+                      Google
+                    </a>
+                  </div>
                 </div>
               </Popup>
             </Marker>
@@ -251,9 +339,13 @@ export default function MapView({
             <span className="w-3 h-3 rounded-full bg-red-600"></span>
             <span>Emergency (E)</span>
           </div>
-          <div className="flex items-center gap-2 col-span-2">
+          <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full bg-sky-400"></span>
             <span>Restaurant (R)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
+            <span>Hotels (H)</span>
           </div>
         </div>
       </div>

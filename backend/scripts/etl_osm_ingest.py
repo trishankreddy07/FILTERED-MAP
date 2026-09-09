@@ -3,7 +3,7 @@ import sys
 import json
 import logging
 import requests
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # Ensure backend path is in python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -16,70 +16,109 @@ logger = logging.getLogger("ETL_OSM_Ingest")
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
 
-# Mapping OSM tags to GeoPulse categories
+# Comprehensive mapping of OSM tags to GeoPulse categories
 AMENITY_CATEGORY_MAP = {
+    # Healthcare
     "hospital": "Hospital",
     "clinic": "Clinic",
     "doctors": "Clinic",
+    "dentist": "Clinic",
     "pharmacy": "Pharmacy",
-    "fire_station": "Emergency Services",
-    "police": "Emergency Services",
-    "ambulance_station": "Emergency Services",
+    "health_post": "Clinic",
+    
+    # Dining & Food
     "restaurant": "Restaurant",
     "cafe": "Restaurant",
-    "fast_food": "Restaurant"
+    "fast_food": "Restaurant",
+    "food_court": "Restaurant",
+    "bar": "Restaurant",
+    "pub": "Restaurant",
+    
+    # Hospitality & Stays
+    "hotel": "Hotel & Stays",
+    "guest_house": "Hotel & Stays",
+    "hostel": "Hotel & Stays",
+    "motel": "Hotel & Stays",
+    "lodging": "Hotel & Stays",
+    
+    # Emergency Services
+    "fire_station": "Emergency Services",
+    "police": "Emergency Services",
+    "ambulance_station": "Emergency Services"
 }
 
-def fetch_osm_pois(bbox: tuple = (37.70, -122.52, 37.82, -122.35)) -> List[Dict[str, Any]]:
+def fetch_osm_around(lat: float, lon: float, radius_m: int = 15000) -> List[Dict[str, Any]]:
     """
-    Fetch POI node elements from Overpass API within specified bounding box (min_lat, min_lon, max_lat, max_lon).
+    Fetch comprehensive POIs (nodes & ways) around given coordinates within radius in meters.
     """
-    min_lat, min_lon, max_lat, max_lon = bbox
-    logger.info(f"Querying Overpass API for bounding box: {bbox}...")
+    radius_m = min(max(radius_m, 1000), 50000) # Clamp between 1km and 50km
+    logger.info(f"Querying Overpass API for center: ({lat}, {lon}) with radius: {radius_m}m...")
 
     overpass_query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:30];
     (
-      node["amenity"~"hospital|clinic|doctors|pharmacy|fire_station|police|restaurant|cafe"]({min_lat},{min_lon},{max_lat},{max_lon});
+      node["amenity"~"hospital|clinic|pharmacy|doctors|dentist|restaurant|cafe|fast_food|food_court|fire_station|police|ambulance_station"](around:{radius_m},{lat},{lon});
+      way["amenity"~"hospital|clinic|pharmacy|doctors|dentist|restaurant|cafe|fast_food|food_court|fire_station|police|ambulance_station"](around:{radius_m},{lat},{lon});
+      node["tourism"~"hotel|guest_house|hostel|motel"](around:{radius_m},{lat},{lon});
+      way["tourism"~"hotel|guest_house|hostel|motel"](around:{radius_m},{lat},{lon});
+      node["healthcare"](around:{radius_m},{lat},{lon});
+      way["healthcare"](around:{radius_m},{lat},{lon});
     );
-    out body;
+    out center;
     """
 
     try:
-        response = requests.post(OVERPASS_URL, data={"data": overpass_query}, timeout=30)
+        response = requests.post(OVERPASS_URL, data={"data": overpass_query}, timeout=35)
         response.raise_for_status()
         data = response.json()
         elements = data.get("elements", [])
-        logger.info(f"Received {len(elements)} raw elements from OpenStreetMap Overpass API.")
+        logger.info(f"Received {len(elements)} elements from Overpass API.")
         return elements
     except Exception as e:
-        logger.error(f"Error requesting Overpass API: {e}")
+        logger.error(f"Error querying Overpass API: {e}")
         return []
 
-def transform_osm_element(element: Dict[str, Any]) -> Dict[str, Any] or None:
-    """Transform raw OSM node element into GeoPulse Place object structure."""
+def transform_osm_element(element: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Transform raw OSM node/way element into GeoPulse Place object."""
     tags = element.get("tags", {})
     name = tags.get("name") or tags.get("name:en")
     
     amenity = tags.get("amenity", "").lower()
-    category = AMENITY_CATEGORY_MAP.get(amenity)
+    tourism = tags.get("tourism", "").lower()
+    healthcare = tags.get("healthcare", "").lower()
 
-    if not category or not name:
+    category = None
+    if amenity in AMENITY_CATEGORY_MAP:
+        category = AMENITY_CATEGORY_MAP[amenity]
+    elif tourism in AMENITY_CATEGORY_MAP:
+        category = AMENITY_CATEGORY_MAP[tourism]
+    elif healthcare:
+        category = "Hospital" if healthcare == "hospital" else "Clinic"
+
+    if not category:
         return None
 
-    lat = element.get("lat")
-    lon = element.get("lon")
+    if not name:
+        name = f"{category} ({amenity or tourism or 'Local'})"
+
+    # Extract coordinates (handles both node lat/lon and way center lat/lon)
+    lat = element.get("lat") or element.get("center", {}).get("lat")
+    lon = element.get("lon") or element.get("center", {}).get("lon")
     if not lat or not lon:
         return None
 
-    # Format address string from OSM tags
+    # Format address
     addr_parts = [
         tags.get("addr:housenumber", ""),
         tags.get("addr:street", ""),
         tags.get("addr:suburb", ""),
         tags.get("addr:city", tags.get("addr:county", ""))
     ]
-    formatted_address = ", ".join([p for p in addr_parts if p.strip()]) or f"{category} on {tags.get('addr:street', 'Local Street')}"
+    formatted_address = ", ".join([p for p in addr_parts if p.strip()]) or f"Near {name}"
+
+    # Generate deterministic realistic rating
+    hash_val = sum(ord(c) for c in name)
+    rating = round(4.0 + (hash_val % 10) * 0.1, 1)
 
     return {
         "name": name,
@@ -87,70 +126,71 @@ def transform_osm_element(element: Dict[str, Any]) -> Dict[str, Any] or None:
         "latitude": float(lat),
         "longitude": float(lon),
         "address": formatted_address,
-        "rating": round(4.0 + (hash(name) % 10) * 0.1, 1), # Realistic pseudo rating
-        "amenity_type": amenity,
+        "rating": rating,
+        "amenity_type": amenity or tourism or healthcare,
         "raw_data": {
             "osm_id": element.get("id"),
+            "osm_type": element.get("type"),
             "phone": tags.get("phone") or tags.get("contact:phone"),
             "opening_hours": tags.get("opening_hours"),
             "website": tags.get("website"),
+            "cuisine": tags.get("cuisine"),
+            "stars": tags.get("stars"),
             "wheelchair": tags.get("wheelchair")
         }
     }
 
-def run_etl_pipeline(bbox=(37.70, -122.52, 37.82, -122.35)):
-    """Extract, Transform, and Load OSM spatial data into database."""
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
+def ingest_osm_for_coordinates(lat: float, lon: float, radius_m: int = 15000, db: SessionLocal = None) -> int:
+    """Extract and load live OSM POIs for a target coordinate."""
+    close_db = False
+    if db is None:
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        close_db = True
 
     try:
-        raw_elements = fetch_osm_pois(bbox)
+        raw_elements = fetch_osm_around(lat, lon, radius_m)
         if not raw_elements:
-            logger.warning("No OSM elements retrieved. Exiting ETL pipeline.")
-            return
+            return 0
 
         inserted_count = 0
-        updated_count = 0
-
         for elem in raw_elements:
-            record = transform_osm_element(elem)
-            if not record:
+            rec = transform_osm_element(elem)
+            if not rec:
                 continue
 
-            # Check if POI already exists by name & coords
+            # Check if place already exists
             existing = db.query(Place).filter(
-                Place.name == record["name"],
-                Place.latitude == record["latitude"],
-                Place.longitude == record["longitude"]
+                Place.name == rec["name"],
+                Place.latitude == rec["latitude"],
+                Place.longitude == rec["longitude"]
             ).first()
 
-            if existing:
-                existing.address = record["address"]
-                existing.raw_data = record["raw_data"]
-                updated_count += 1
-            else:
+            if not existing:
                 p = Place(
-                    name=record["name"],
-                    category=record["category"],
-                    latitude=record["latitude"],
-                    longitude=record["longitude"],
-                    address=record["address"],
-                    rating=record["rating"],
-                    amenity_type=record["amenity_type"],
-                    raw_data=record["raw_data"]
+                    name=rec["name"],
+                    category=rec["category"],
+                    latitude=rec["latitude"],
+                    longitude=rec["longitude"],
+                    address=rec["address"],
+                    rating=rec["rating"],
+                    amenity_type=rec["amenity_type"],
+                    raw_data=rec["raw_data"]
                 )
                 db.add(p)
                 inserted_count += 1
 
         db.commit()
-        logger.info(f"ETL Execution Summary -> Inserted: {inserted_count}, Updated: {updated_count}")
-
+        logger.info(f"Successfully ingested {inserted_count} new POIs for ({lat}, {lon})")
+        return inserted_count
     except Exception as e:
-        logger.error(f"ETL pipeline failed: {e}")
+        logger.error(f"Error during OSM ingestion: {e}")
         db.rollback()
+        return 0
     finally:
-        db.close()
+        if close_db:
+            db.close()
 
 if __name__ == "__main__":
-    logger.info("Starting OpenStreetMap spatial ETL ingest pipeline...")
-    run_etl_pipeline()
+    logger.info("Executing sample Overpass ingest for San Francisco...")
+    ingest_osm_for_coordinates(37.7749, -122.4194, 15000)

@@ -10,6 +10,7 @@ import {
   Pill,
   Siren,
   UtensilsCrossed,
+  Hotel,
   Layers
 } from 'lucide-react';
 
@@ -19,7 +20,8 @@ const CATEGORIES = [
   { id: 'Clinic', label: 'Clinics', icon: Stethoscope },
   { id: 'Pharmacy', label: 'Pharmacies', icon: Pill },
   { id: 'Emergency Services', label: 'Emergency', icon: Siren },
-  { id: 'Restaurant', label: 'Restaurants', icon: UtensilsCrossed },
+  { id: 'Restaurant', label: 'Dining & Cafes', icon: UtensilsCrossed },
+  { id: 'Hotel & Stays', label: 'Hotels & Stays', icon: Hotel },
 ];
 
 export default function FilterPanel({
@@ -43,9 +45,9 @@ export default function FilterPanel({
         <div>
           <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
-            Spatial Filters
+            Spatial Explorer
           </h2>
-          <p className="text-xs text-slate-400">Refine POIs & catchment buffer</p>
+          <p className="text-xs text-slate-400">Discover venues & spatial analytics</p>
         </div>
 
         <button
@@ -53,7 +55,7 @@ export default function FilterPanel({
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white shadow-md shadow-cyan-500/20 transition-all cursor-pointer"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          Spatial Analytics
+          Analytics
         </button>
       </div>
 
@@ -64,7 +66,7 @@ export default function FilterPanel({
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by name, amenity, or address..."
+          placeholder="Search by venue name, cuisine, hotel, or street..."
           className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/50 transition-all"
         />
       </div>
@@ -72,7 +74,7 @@ export default function FilterPanel({
       {/* Category Pills */}
       <div>
         <label className="block text-xs font-medium text-slate-400 mb-2">
-          Category Filter
+          Venue Category
         </label>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {CATEGORIES.map((cat) => {
@@ -99,7 +101,7 @@ export default function FilterPanel({
       {/* Radius Distance Slider (1km to 50km) */}
       <div>
         <div className="flex justify-between items-center text-xs mb-1.5">
-          <span className="font-medium text-slate-300">Catchment Radius</span>
+          <span className="font-medium text-slate-300">Scan Catchment Radius</span>
           <span className="font-bold text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800/40">
             {radiusKm} km
           </span>

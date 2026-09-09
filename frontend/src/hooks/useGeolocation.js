@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // Default fallback coordinates (San Francisco Downtown)
 const DEFAULT_LOCATION = {
@@ -11,6 +11,8 @@ const DEFAULT_LOCATION = {
 
 export function useGeolocation() {
   const [location, setLocation] = useState(DEFAULT_LOCATION);
+  const [isLiveTracking, setIsLiveTracking] = useState(false);
+  const watchIdRef = useRef(null);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -47,5 +49,49 @@ export function useGeolocation() {
     }));
   };
 
-  return { ...location, setCustomLocation };
+  const startLiveTracking = () => {
+    if (!navigator.geolocation) return;
+    if (watchIdRef.current !== null) return;
+
+    setIsLiveTracking(true);
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        setLocation(prev => ({
+          ...prev,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          error: null
+        }));
+      },
+      (error) => {
+        console.warn('Live tracking warning:', error.message);
+      },
+      { enableHighAccuracy: true, maximumAge: 3000, timeout: 5000 }
+    );
+  };
+
+  const stopLiveTracking = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setIsLiveTracking(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
+  return { 
+    ...location, 
+    isLiveTracking, 
+    setCustomLocation, 
+    startLiveTracking, 
+    stopLiveTracking 
+  };
 }

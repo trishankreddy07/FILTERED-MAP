@@ -1,6 +1,8 @@
 import math
+import logging
+import requests
 from typing import Dict, List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -12,7 +14,81 @@ from app.schemas.place import (
     ScoreAnalyticsRequest, ScoreAnalyticsResponse
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/analytics", tags=["Spatial Analytics Engine"])
+
+@router.get("/route")
+def get_driving_route(
+    start_lat: float = Query(..., description="Origin latitude"),
+    start_lng: float = Query(..., description="Origin longitude"),
+    end_lat: float = Query(..., description="Destination latitude"),
+    end_lng: float = Query(..., description="Destination longitude")
+):
+    """
+    Compute driving route, turn-by-turn directions, total distance, and duration
+    via Open Source Routing Machine (OSRM) with automatic fallback.
+    """
+    url = f"https://router.project-osrm.org/route/v1/driving/{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            routes = data.get("routes", [])
+            if routes:
+                route = routes[0]
+                geom = route.get("geometry", {}).get("coordinates", [])
+                # Convert GeoJSON [lng, lat] to Leaflet [lat, lng]
+                lat_lng_path = [[pt[1], pt[0]] for pt in geom]
+                
+                legs = route.get("legs", [])
+                steps_list = []
+                if legs:
+                    for step in legs[0].get("steps", []):
+                        maneuver = step.get("maneuver", {})
+                        m_type = maneuver.get("type", "turn")
+                        m_mod = maneuver.get("modifier", "")
+                        street = step.get("name")
+                        
+                        if m_type == "depart":
+                            instr = f"Head {m_mod or 'out'} on {street}" if street else "Depart on current route"
+                        elif m_type == "arrive":
+                            instr = "Arrive at your destination"
+                        else:
+                            action = f"Turn {m_mod}" if m_mod else m_type.capitalize()
+                            instr = f"{action} onto {street}" if street else f"{action}"
+                            
+                        steps_list.append({
+                            "instruction": instr,
+                            "distance_m": round(step.get("distance", 0)),
+                            "duration_s": round(step.get("duration", 0)),
+                            "type": m_type,
+                            "modifier": m_mod
+                        })
+                
+                return {
+                    "status": "success",
+                    "coordinates": lat_lng_path,
+                    "distance_km": round(route.get("distance", 0) / 1000.0, 2),
+                    "duration_mins": max(1.0, round(route.get("duration", 0) / 60.0, 1)),
+                    "steps": steps_list
+                }
+    except Exception as e:
+        logger.warning(f"OSRM routing request failed: {e}. Defaulting to geodesic direct route.")
+
+    # Direct line fallback
+    dist_km = round(haversine_distance_km(start_lat, start_lng, end_lat, end_lng), 2)
+    dur_mins = max(1.0, round((dist_km / 35.0) * 60.0, 1))
+    return {
+        "status": "fallback",
+        "coordinates": [[start_lat, start_lng], [end_lat, end_lng]],
+        "distance_km": dist_km,
+        "duration_mins": dur_mins,
+        "steps": [
+            {"instruction": f"Head toward destination ({dist_km} km)", "distance_m": int(dist_km * 1000), "duration_s": int(dur_mins * 60), "type": "depart", "modifier": "straight"},
+            {"instruction": "Arrive at destination", "distance_m": 0, "duration_s": 0, "type": "arrive", "modifier": ""}
+        ]
+    }
 
 @router.post("/density", response_model=DensityAnalyticsResponse)
 def calculate_spatial_density(
@@ -21,7 +97,6 @@ def calculate_spatial_density(
 ):
     """
     Compute spatial point density and grid aggregation matrix across specified bounding box boundaries.
-    Divides the extent into a grid_size x grid_size matrix and aggregates POI distribution counts.
     """
     if req.min_lat >= req.max_lat or req.min_lng >= req.max_lng:
         raise HTTPException(status_code=400, detail="Invalid bounding box coordinates (min must be less than max)")
@@ -42,7 +117,6 @@ def calculate_spatial_density(
     lat_step = (req.max_lat - req.min_lat) / grid_dim
     lng_step = (req.max_lng - req.min_lng) / grid_dim
 
-    # Initialize grid buckets
     grid_cells: Dict[str, dict] = {}
     for r in range(grid_dim):
         for c in range(grid_dim):
@@ -59,7 +133,6 @@ def calculate_spatial_density(
                 "categories": {}
             }
 
-    # Bin places into grid cells
     for p in places:
         r = int((p.latitude - req.min_lat) / lat_step)
         c = int((p.longitude - req.min_lng) / lng_step)
@@ -76,7 +149,6 @@ def calculate_spatial_density(
     result_cells: List[GridCellDensity] = []
     for cell_id, cell in grid_cells.items():
         cnt = cell["count"]
-        # Classify density level
         if cnt == 0:
             level = "none"
         elif cnt <= max_count * 0.25:
@@ -105,7 +177,6 @@ def calculate_spatial_density(
         cells=result_cells
     )
 
-
 @router.post("/isochrone", response_model=IsochroneResponse)
 def calculate_isochrone_buffers(
     req: IsochroneRequest,
@@ -113,15 +184,10 @@ def calculate_isochrone_buffers(
 ):
     """
     Calculate concentric travel-time and distance buffer zones around a target coordinate.
-    Calculates POI counts, category breakdowns, estimated drive times, and coverage area per ring.
     """
     all_places = db.query(Place).all()
-    
-    # Sort buffer radii ascending
     radii = sorted(req.buffer_radii_km)
     rings: List[IsochroneRingDetail] = []
-
-    # Urban driving speed assumption: 30 km/h average city speed (2 mins per km)
     AVG_URBAN_SPEED_KMH = 30.0
 
     for r_km in radii:
@@ -150,25 +216,23 @@ def calculate_isochrone_buffers(
         rings=rings
     )
 
-
 @router.post("/score", response_model=ScoreAnalyticsResponse)
 def calculate_accessibility_score(
     req: ScoreAnalyticsRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Calculate a multi-criteria spatial accessibility and service coverage score (0 - 100)
-    for a location using distance decay functions across Hospitals, Clinics, Pharmacies, Emergency Services, and Dining.
+    Calculate a multi-criteria spatial accessibility and service coverage score (0 - 100).
     """
     all_places = db.query(Place).all()
 
-    # Category buckets and distance weights
     cat_distances: Dict[str, List[float]] = {
         "Hospital": [],
         "Clinic": [],
         "Pharmacy": [],
         "Emergency Services": [],
-        "Restaurant": []
+        "Restaurant": [],
+        "Hotel & Stays": []
     }
 
     category_summary: Dict[str, int] = {}
@@ -178,28 +242,25 @@ def calculate_accessibility_score(
         cat = p.category
         if cat in cat_distances:
             cat_distances[cat].append(dist)
-        if dist <= 5.0: # Within 5km local catchment area
+        if dist <= 5.0:
             category_summary[cat] = category_summary.get(cat, 0) + 1
 
     def compute_subscore(distances: List[float]) -> float:
         if not distances:
             return 0.0
         min_d = min(distances)
-        # Distance decay function: score 100 if within 0.5km, decays exponentially beyond
         if min_d <= 0.5:
             base = 100.0
         else:
             base = max(0.0, 100.0 * math.exp(-0.35 * (min_d - 0.5)))
-        # Bonus for density of options (up to +20 points)
         density_bonus = min(20.0, len([d for d in distances if d <= 3.0]) * 4.0)
         return min(100.0, round(base + density_bonus, 1))
 
     score_hospital = compute_subscore(cat_distances["Hospital"] + cat_distances["Clinic"])
     score_emergency = compute_subscore(cat_distances["Emergency Services"])
     score_pharmacy = compute_subscore(cat_distances["Pharmacy"])
-    score_dining = compute_subscore(cat_distances["Restaurant"])
+    score_dining = compute_subscore(cat_distances["Restaurant"] + cat_distances["Hotel & Stays"])
 
-    # Normalize user weights to sum to 1.0
     total_w = req.weight_healthcare + req.weight_emergency + req.weight_pharmacy + req.weight_dining
     if total_w <= 0:
         total_w = 1.0
@@ -233,7 +294,7 @@ def calculate_accessibility_score(
             "Healthcare & Clinics": score_hospital,
             "Emergency Services": score_emergency,
             "Pharmacies": score_pharmacy,
-            "Dining & Amenities": score_dining
+            "Dining & Hospitality": score_dining
         },
         nearby_summary=category_summary,
         assessment_tier=tier
