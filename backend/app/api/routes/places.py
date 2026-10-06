@@ -38,23 +38,56 @@ def sync_osm_data(
     """
     radius_meters = int(radius_km * 1000)
     
-    # Overpass QL - Optimized to prevent 504 Timeouts on 50km radius
-    overpass_url = "https://overpass-api.de/api/interpreter"
+    # Overpass multi-mirror list to bypass cloud network/IP restrictions (e.g. on Render)
+    OVERPASS_MIRRORS = [
+        "https://overpass-api.de/api/interpreter",
+        "https://lz4.overpass-api.de/api/interpreter",
+        "https://z.overpass-api.de/api/interpreter",
+        "https://overpass.k3s.celestial.earth/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter"
+    ]
+    
     query = f"""
-    [out:json][timeout:90];
+    [out:json][timeout:60];
     (
-      node["amenity"~"hospital|clinic|pharmacy|restaurant|cafe|fast_food|fire_station|police"](around:{radius_meters},{lat},{lng});
+      node["amenity"~"hospital|clinic|pharmacy|restaurant|cafe|fast_food|fire_station|police|bus_station"](around:{radius_meters},{lat},{lng});
+      node["highway"="bus_stop"](around:{radius_meters},{lat},{lng});
       node["tourism"~"hotel|guest_house|attraction|museum|viewpoint"](around:{radius_meters},{lat},{lng});
       node["historic"](around:{radius_meters},{lat},{lng});
     );
     out center;
     """
     
-    try:
-        response = requests.post(overpass_url, data={'data': query}, timeout=95)
-        response.raise_for_status()
-        elements = response.json().get("elements", [])
+    headers = {
+        'User-Agent': 'GeoPulse-SpatialEngine/2.0 (geopulse-app@render.com)',
+        'Accept': 'application/json'
+    }
+    
+    elements = None
+    last_error = None
+    
+    for mirror_url in OVERPASS_MIRRORS:
+        try:
+            logger.info(f"Querying Overpass mirror: {mirror_url}")
+            response = requests.post(mirror_url, data={'data': query}, headers=headers, timeout=25)
+            if response.status_code == 200:
+                elements = response.json().get("elements", [])
+                logger.info(f"Successfully received {len(elements)} elements from {mirror_url}")
+                break
+            else:
+                logger.warning(f"Mirror {mirror_url} returned status {response.status_code}")
+        except Exception as e:
+            last_error = str(e)
+            logger.warning(f"Mirror {mirror_url} failed: {e}")
+            continue
+            
+    if elements is None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"All Overpass mirrors failed or timed out. Last error: {last_error}"
+        )
         
+    try:
         added_count = 0
         for el in elements:
             tags = el.get("tags", {})
@@ -70,19 +103,22 @@ def sync_osm_data(
             # Map OSM tags to categories
             category = "Other"
             amenity = tags.get("amenity", "")
+            highway = tags.get("highway", "")
             tourism = tags.get("tourism", "")
             historic = tags.get("historic", "")
             
             if amenity in ["hospital", "clinic", "doctors"]:
-                category = "Hospitals"
+                category = "Hospital" if amenity == "hospital" else "Clinic"
             elif amenity == "pharmacy":
-                category = "Pharmacies"
+                category = "Pharmacy"
             elif amenity in ["fire_station", "police", "ambulance_station"]:
                 category = "Emergency Services"
             elif amenity in ["restaurant", "cafe", "fast_food"]:
-                category = "Dining & Cafe"
+                category = "Restaurant"
             elif tourism in ["hotel", "guest_house", "hostel", "motel"]:
-                category = "Hotels & Stays"
+                category = "Hotel & Stays"
+            elif amenity == "bus_station" or highway == "bus_stop":
+                category = "Bus Stands"
             elif tourism in ["attraction", "museum", "viewpoint", "theme_park"] or historic:
                 category = "Tourist Places"
             
@@ -99,7 +135,7 @@ def sync_osm_data(
                     latitude=lat_val,
                     longitude=lon_val,
                     rating=4.0,
-                    amenity_type=amenity or tourism or historic,
+                    amenity_type=amenity or highway or tourism or historic,
                     address=tags.get("addr:street", tags.get("addr:city", f"Near {name}")),
                     raw_data={
                         "phone": tags.get("phone") or tags.get("contact:phone"),
@@ -115,9 +151,6 @@ def sync_osm_data(
         logger.info(f"Successfully synced {added_count} locations from Overpass API.")
         return {"message": f"Successfully synced {added_count} new locations from OpenStreetMap.", "added": added_count}
         
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch from OpenStreetMap: {e}")
-        raise HTTPException(status_code=502, detail=f"Failed to fetch from OpenStreetMap: {str(e)}")
     except Exception as e:
         db.rollback()
         logger.error(f"Database error during OSM sync: {e}")
@@ -162,6 +195,7 @@ def get_places(
             "Dining & Cafes": ["Restaurant", "Dining & Cafe", "Dining & Cafes"],
             "Hotel & Stays": ["Hotel & Stays", "Hotels & Stays"],
             "Hotels & Stays": ["Hotel & Stays", "Hotels & Stays"],
+            "Bus Stands": ["Bus Stands", "Bus Stand", "Transit & Bus"],
             "Tourist Places": ["Tourist Places"]
         }
         allowed = cat_map.get(category, [category])

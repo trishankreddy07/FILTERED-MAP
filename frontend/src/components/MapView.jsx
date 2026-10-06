@@ -10,67 +10,64 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import { 
-  Hospital, 
-  Stethoscope, 
-  Pill, 
-  Siren, 
-  UtensilsCrossed, 
-  Hotel,
-  Landmark,
-  MapPin, 
-  Star,
-  Compass,
+  Compass, 
   ExternalLink,
-  Flag
+  Navigation
 } from 'lucide-react';
 
-// Custom colored HTML SVG DivIcons for Leaflet
+// Antigravity Glowing Vector DivIcons for Leaflet
 const createCustomIcon = (category, isSelected = false) => {
-  let color = '#06b6d4'; // Cyan default
+  let color = '#00F0FF'; // Electric Cyan default
   let letter = 'P';
 
-  if (category === 'Hospital') {
-    color = '#f43f5e'; // Rose
+  if (category === 'Hospital' || category === 'Hospitals') {
+    color = '#F43F5E'; // Neon Rose
     letter = 'H';
-  } else if (category === 'Clinic') {
-    color = '#10b981'; // Emerald
+  } else if (category === 'Clinic' || category === 'Clinics') {
+    color = '#06B6D4'; // Cyan-Emerald
     letter = 'C';
-  } else if (category === 'Pharmacy') {
-    color = '#f59e0b'; // Amber
+  } else if (category === 'Pharmacy' || category === 'Pharmacies') {
+    color = '#10B981'; // Quantum Emerald
     letter = 'Rx';
   } else if (category === 'Emergency Services') {
-    color = '#dc2626'; // Red
+    color = '#EF4444'; // Emergency Neon Red
     letter = 'E';
-  } else if (category === 'Restaurant') {
-    color = '#38bdf8'; // Sky
+  } else if (category === 'Restaurant' || category === 'Dining & Cafe' || category === 'Dining & Cafes') {
+    color = '#A855F7'; // Neon Purple
     letter = 'R';
-  } else if (category === 'Hotel & Stays') {
-    color = '#8b5cf6'; // Indigo / Violet
+  } else if (category === 'Hotel & Stays' || category === 'Hotels & Stays') {
+    color = '#3B82F6'; // Hyper Blue
     letter = 'H';
+  } else if (category === 'Bus Stands' || category === 'Bus Stand' || category === 'Transit & Bus') {
+    color = '#14B8A6'; // Neon Teal
+    letter = 'B';
   } else if (category === 'Tourist Places') {
-    color = '#d946ef'; // Fuchsia / Magenta
+    color = '#D946EF'; // Neon Fuchsia
     letter = 'T';
   }
 
-  const ringClass = isSelected ? 'box-shadow: 0 0 0 4px #38bdf8, 0 0 22px rgba(56, 189, 248, 0.9); transform: scale(1.15);' : 'box-shadow: 0 2px 10px rgba(0,0,0,0.5);';
+  const ringClass = isSelected 
+    ? 'box-shadow: 0 0 0 4px #00F0FF, 0 0 28px rgba(0, 240, 255, 1); transform: scale(1.22); z-index: 1000;' 
+    : `box-shadow: 0 0 14px ${color}88, 0 2px 10px rgba(0,0,0,0.85);`;
 
   return L.divIcon({
     className: 'custom-leaflet-marker',
     html: `
       <div style="
-        background-color: ${color};
+        background: radial-gradient(circle at 35% 35%, ${color}, #07090E 120%);
         width: 32px;
         height: 32px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
-        font-weight: bold;
-        font-size: 13px;
-        border: 2px solid white;
+        color: #ffffff;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 800;
+        font-size: 12px;
+        border: 2px solid rgba(255, 255, 255, 0.85);
         ${ringClass}
-        transition: all 0.25s ease;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       ">
         ${letter}
       </div>
@@ -84,54 +81,54 @@ const createCustomIcon = (category, isSelected = false) => {
 const userLocationIcon = L.divIcon({
   className: 'custom-user-marker',
   html: `
-    <div style="position: relative; width: 28px; height: 28px;">
+    <div style="position: relative; width: 32px; height: 32px;">
       <div style="
         position: absolute;
-        width: 28px;
-        height: 28px;
-        background-color: rgba(6, 182, 212, 0.4);
+        width: 32px;
+        height: 32px;
+        background-color: rgba(0, 240, 255, 0.35);
         border-radius: 50%;
-        animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+        animation: radar-pulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
       "></div>
       <div style="
         position: absolute;
-        top: 4px;
-        left: 4px;
+        top: 6px;
+        left: 6px;
         width: 20px;
         height: 20px;
-        background-color: #06b6d4;
+        background-color: #00F0FF;
         border-radius: 50%;
-        border: 3px solid white;
-        box-shadow: 0 0 12px rgba(6, 182, 212, 0.9);
+        border: 2.5px solid #ffffff;
+        box-shadow: 0 0 16px rgba(0, 240, 255, 1);
       "></div>
     </div>
   `,
-  iconSize: [28, 28],
-  iconAnchor: [14, 14]
+  iconSize: [32, 32],
+  iconAnchor: [16, 16]
 });
 
 const destinationIcon = L.divIcon({
   className: 'custom-dest-marker',
   html: `
     <div style="
-      background-color: #ef4444;
-      width: 32px;
-      height: 32px;
+      background: radial-gradient(circle at 35% 35%, #F43F5E, #881337);
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       color: white;
-      font-size: 16px;
-      border: 3px solid white;
-      box-shadow: 0 0 15px rgba(239, 68, 68, 0.8);
-      animation: bounce 1s infinite alternate;
+      font-size: 15px;
+      border: 2.5px solid white;
+      box-shadow: 0 0 20px rgba(244, 63, 94, 0.9);
+      animation: bounce 1.2s infinite alternate;
     ">
       🏁
     </div>
   `,
-  iconSize: [32, 32],
-  iconAnchor: [16, 16],
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
   popupAnchor: [0, -18]
 });
 
@@ -158,21 +155,21 @@ export default function MapView({
   selectedPlace,
   onSelectPlace,
   onGetDirections,
-  activeRoute,
-  showIsochrones = false
+  activeRoute
 }) {
   const centerPosition = [userLocation.latitude, userLocation.longitude];
 
   return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#07090E]">
       <MapContainer
         center={centerPosition}
         zoom={13}
         scrollWheelZoom={true}
-        className="w-full h-full"
+        className="w-full h-full bg-[#07090E]"
       >
-        {/* OpenStreetMap Standard Tile Layer */}
+        {/* OpenStreetMap with Antigravity Dark Filter */}
         <TileLayer
+          className="antigravity-tiles"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
@@ -188,9 +185,11 @@ export default function MapView({
         <Marker position={centerPosition} icon={userLocationIcon}>
           <Popup>
             <div className="p-1 text-slate-100">
-              <strong className="text-cyan-400 block mb-1">Active GPS Position</strong>
-              <div className="text-xs text-slate-300">
-                Lat: {userLocation.latitude.toFixed(4)}, Lng: {userLocation.longitude.toFixed(4)}
+              <strong className="text-[#00F0FF] font-mono text-xs uppercase tracking-wider block mb-1">
+                Active GPS Center
+              </strong>
+              <div className="font-mono text-xs text-slate-300">
+                {userLocation.latitude.toFixed(4)}, {userLocation.longitude.toFixed(4)}
               </div>
             </div>
           </Popup>
@@ -202,9 +201,9 @@ export default function MapView({
             center={centerPosition}
             radius={radiusKm * 1000}
             pathOptions={{
-              color: '#06b6d4',
-              fillColor: '#06b6d4',
-              fillOpacity: 0.08,
+              color: '#00F0FF',
+              fillColor: '#00F0FF',
+              fillOpacity: 0.05,
               weight: 1.5,
               dashArray: '6, 6'
             }}
@@ -214,24 +213,24 @@ export default function MapView({
         {/* Active Navigation Polyline */}
         {activeRoute?.coordinates && activeRoute.coordinates.length > 0 && (
           <>
-            {/* Glow background casing line */}
+            {/* Glow casing line */}
             <Polyline
               positions={activeRoute.coordinates}
               pathOptions={{
-                color: '#0284c7',
+                color: '#00F0FF',
                 weight: 8,
                 opacity: 0.45,
                 lineCap: 'round',
                 lineJoin: 'round'
               }}
             />
-            {/* Foreground crisp path line */}
+            {/* Foreground crisp neon line */}
             <Polyline
               positions={activeRoute.coordinates}
               pathOptions={{
-                color: '#38bdf8',
-                weight: 5,
-                opacity: 0.95,
+                color: '#38BDF8',
+                weight: 4.5,
+                opacity: 1,
                 lineCap: 'round',
                 lineJoin: 'round'
               }}
@@ -247,10 +246,12 @@ export default function MapView({
           >
             <Popup>
               <div className="p-1 text-slate-100">
-                <strong className="text-rose-400 block mb-1">🏁 Destination</strong>
+                <strong className="text-[#F43F5E] font-mono text-xs uppercase tracking-wider block mb-1">
+                  Destination Target
+                </strong>
                 <div className="text-xs font-semibold">{activeRoute.destination.name}</div>
-                <div className="text-xs text-cyan-400 mt-1">
-                  {activeRoute.distance_km} km ({activeRoute.duration_mins} mins away)
+                <div className="text-xs font-mono text-[#00F0FF] mt-1">
+                  {activeRoute.distance_km} km ({activeRoute.duration_mins} mins)
                 </div>
               </div>
             </Popup>
@@ -272,13 +273,13 @@ export default function MapView({
               }}
             >
               <Popup>
-                <div className="p-1 text-slate-100 max-w-[240px]">
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/40">
+                <div className="p-1 text-slate-100 max-w-[250px]">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/30">
                       {place.category}
                     </span>
                     {place.rating && (
-                      <span className="text-xs text-amber-300 flex items-center gap-1 font-semibold">
+                      <span className="font-mono text-xs text-[#F59E0B] font-semibold">
                         ★ {place.rating}
                       </span>
                     )}
@@ -287,19 +288,19 @@ export default function MapView({
                     {place.name}
                   </strong>
                   {place.address && (
-                    <p className="text-xs text-slate-400 mb-2">{place.address}</p>
+                    <p className="text-xs text-slate-400 mb-2 line-clamp-2">{place.address}</p>
                   )}
                   {place.distance_km !== undefined && (
-                    <div className="text-xs text-cyan-400 font-medium mb-3">
+                    <div className="font-mono text-xs text-[#00F0FF] font-semibold mb-3">
                       {place.distance_km} km from active GPS
                     </div>
                   )}
 
                   {/* Popup Action Buttons */}
-                  <div className="pt-2 border-t border-slate-700/80 flex items-center justify-between gap-2">
+                  <div className="pt-2.5 border-t border-white/10 flex items-center justify-between gap-2">
                     <button
                       onClick={() => onGetDirections(place)}
-                      className="flex-1 py-1.5 px-2 rounded-md bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer"
+                      className="flex-1 py-1.5 px-2 rounded-xl bg-[#00F0FF] hover:bg-[#00F0FF]/90 text-[#07090E] font-mono font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-[0_0_12px_rgba(0,240,255,0.4)]"
                     >
                       <Compass className="w-3.5 h-3.5" />
                       Directions
@@ -308,10 +309,10 @@ export default function MapView({
                       href={googleMapsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="py-1.5 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs flex items-center justify-center gap-1 transition-all cursor-pointer border border-slate-700"
+                      className="py-1.5 px-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 font-mono text-xs flex items-center justify-center gap-1 transition-all cursor-pointer border border-white/10"
                     >
-                      <ExternalLink className="w-3 h-3 text-cyan-400" />
-                      Google
+                      <ExternalLink className="w-3.5 h-3.5 text-[#00F0FF]" />
+                      Maps
                     </a>
                   </div>
                 </div>
@@ -322,38 +323,42 @@ export default function MapView({
       </MapContainer>
 
       {/* Floating Map Legend */}
-      <div className="absolute bottom-5 right-5 z-[400] bg-slate-900/90 backdrop-blur-md p-3.5 rounded-xl border border-slate-800 shadow-xl text-xs space-y-2">
-        <span className="font-semibold text-slate-200 block text-[11px] uppercase tracking-wider">
-          POI Categories
+      <div className="absolute bottom-5 right-5 z-[400] antigravity-glass p-3.5 rounded-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.6)] text-xs space-y-2.5 backdrop-blur-md">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400 block font-bold">
+          Venue Indicators
         </span>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-slate-300">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-slate-300 font-mono text-[11px]">
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-rose-500"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#F43F5E] shadow-[0_0_6px_#F43F5E]"></span>
             <span>Hospital (H)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#06B6D4] shadow-[0_0_6px_#06B6D4]"></span>
             <span>Clinic (C)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-amber-500"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] shadow-[0_0_6px_#10B981]"></span>
             <span>Pharmacy (Rx)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-red-600"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444] shadow-[0_0_6px_#EF4444]"></span>
             <span>Emergency (E)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-sky-400"></span>
-            <span>Restaurant (R)</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#A855F7] shadow-[0_0_6px_#A855F7]"></span>
+            <span>Dining (R)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6] shadow-[0_0_6px_#3B82F6]"></span>
             <span>Hotels (H)</span>
           </div>
-          <div className="flex items-center gap-2 col-span-2">
-            <span className="w-3 h-3 rounded-full bg-fuchsia-500"></span>
-            <span>Tourist Places (T)</span>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#14B8A6] shadow-[0_0_6px_#14B8A6]"></span>
+            <span>Bus Stands (B)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#D946EF] shadow-[0_0_6px_#D946EF]"></span>
+            <span>Tourist (T)</span>
           </div>
         </div>
       </div>
