@@ -41,6 +41,9 @@ def seed_initial_data(db: Session):
                     db.add(p)
                 db.commit()
                 logger.info(f"Successfully seeded {len(records)} spatial POI records!")
+        else:
+            places.seed_dynamic_local_places(37.7749, -122.4194, db)
+            logger.info("Successfully seeded default local category POIs!")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

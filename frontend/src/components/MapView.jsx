@@ -67,39 +67,39 @@ const CATEGORY_SVGS = {
 
 const RADIUS_PRESETS = [2, 5, 10, 25, 50];
 
-// Reliable Tile Layer Providers with High Performance CDN & Native Dark Styles
+// 100% Free Public Tile Providers with ZERO API Key Requirements & Zero Watermarks
 const TILE_PROVIDERS = {
-  carto_dark: {
-    name: 'CartoDB Dark Matter',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20,
-    className: 'carto-dark-tiles'
-  },
-  cyber: {
-    name: 'Cyber Neon',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20,
-    className: 'carto-cyber-tiles'
-  },
-  day: {
-    name: 'CartoDB Voyager',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20,
-    className: ''
-  },
-  osm: {
-    name: 'Standard OSM',
+  dark: {
+    name: 'OpenStreetMap Dark',
     url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     subdomains: 'abc',
     maxZoom: 19,
-    className: ''
+    className: 'osm-dark-tiles'
+  },
+  cyber: {
+    name: 'Cyber Neon OSM',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains: 'abc',
+    maxZoom: 19,
+    className: 'osm-cyber-tiles'
+  },
+  day: {
+    name: 'Standard OSM Day',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains: 'abc',
+    maxZoom: 19,
+    className: 'osm-day-tiles'
+  },
+  hot: {
+    name: 'Humanitarian OSM',
+    url: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="https://www.hotosm.org/">HOT</a>',
+    subdomains: 'abc',
+    maxZoom: 19,
+    className: 'osm-day-tiles'
   }
 };
 
@@ -820,11 +820,11 @@ export default function MapView({
   // Interactive Layer Controls State
   const [isClusteringEnabled, setIsClusteringEnabled] = useState(true);
   const [autoFitView, setAutoFitView] = useState(true);
-  const [tileMode, setTileMode] = useState('carto_dark'); // 'carto_dark' | 'cyber' | 'day' | 'osm'
+  const [tileMode, setTileMode] = useState('dark'); // 'dark' | 'cyber' | 'day' | 'hot'
   const [isHeatmapActive, setIsHeatmapActive] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
 
-  const currentTileConfig = TILE_PROVIDERS[tileMode] || TILE_PROVIDERS.carto_dark;
+  const currentTileConfig = TILE_PROVIDERS[tileMode] || TILE_PROVIDERS.dark;
 
   return (
     <div 
@@ -1162,17 +1162,17 @@ export default function MapView({
             {/* Base Tile Selector */}
             <div className="space-y-1.5 pt-1 border-t border-white/10">
               <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
-                Tile Contrast Surface
+                Tile Contrast Surface (No Key Required)
               </span>
               <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
                 <button
-                  onClick={() => setTileMode('carto_dark')}
+                  onClick={() => setTileMode('dark')}
                   className={`py-1 rounded-lg border text-center transition-all cursor-pointer ${
-                    tileMode === 'carto_dark' 
+                    tileMode === 'dark' 
                       ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 font-bold' 
                       : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
                   }`}
-                  title="CartoDB Dark Matter"
+                  title="OpenStreetMap Dark"
                 >
                   Dark
                 </button>
@@ -1194,7 +1194,7 @@ export default function MapView({
                       ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 font-bold' 
                       : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
                   }`}
-                  title="CartoDB Voyager Day Surface"
+                  title="Standard OpenStreetMap Day"
                 >
                   Day
                 </button>

@@ -104,15 +104,21 @@
   z-index: 1;
 }
 
-/* CartoDB Dark Matter Crisp Native Dark Layer */
-.carto-dark-tiles .leaflet-tile {
-  filter: contrast(1.06) brightness(0.98);
+/* 100% Free OpenStreetMap Dark Mode Tile Styles (Zero API Key, Zero Watermark) */
+.osm-dark-tiles .leaflet-tile {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
   transition: opacity 0.2s ease-in;
 }
 
-/* Optional Cyber Glow Tint */
-.carto-cyber-tiles .leaflet-tile {
-  filter: contrast(1.15) brightness(0.95) saturate(1.1);
+/* OpenStreetMap Cyber Neon Mode */
+.osm-cyber-tiles .leaflet-tile {
+  filter: invert(100%) hue-rotate(195deg) brightness(100%) contrast(115%) saturate(120%);
+  transition: opacity 0.2s ease-in;
+}
+
+/* OpenStreetMap Day Mode */
+.osm-day-tiles .leaflet-tile {
+  filter: none;
   transition: opacity 0.2s ease-in;
 }
 

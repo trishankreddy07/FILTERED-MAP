@@ -196,6 +196,59 @@ def autocomplete_places(
         for p in places
     ]
 
+def seed_dynamic_local_places(lat: float, lng: float, db: Session) -> List[Place]:
+    """Auto-generates local sample POIs across all 8 categories when region has 0 venues."""
+    sample_definitions = [
+        ("Metro Memorial Hospital", "Hospital", 0.007, 0.005, 4.8, "500 Central Ave", "24/7", "+1-555-0101"),
+        ("Apollo Multispecialty Hospital", "Hospital", -0.011, 0.008, 4.7, "120 West Parkway", "24/7", "+1-555-0102"),
+        ("City Care Trauma Hospital", "Hospital", 0.015, -0.010, 4.6, "88 North Blvd", "24/7", "+1-555-0103"),
+        ("CarePoint Family Healthcare Clinic", "Clinic", 0.004, -0.006, 4.5, "75 Medical Plaza", "Mo-Sa 08:00-20:00", "+1-555-0111"),
+        ("Sunrise Health & Polyclinic", "Clinic", -0.007, -0.009, 4.4, "210 Sunrise Blvd", "Mo-Sa 09:00-19:00", "+1-555-0112"),
+        ("Prime Dental & Polyclinic", "Clinic", 0.010, 0.012, 4.6, "14 Medical Square", "Mo-Fr 08:30-18:30", "+1-555-0113"),
+        ("MedPlus 24/7 Care Chemist", "Pharmacy", 0.003, 0.003, 4.7, "34 Market Square", "24/7", "+1-555-0121"),
+        ("Apex Guardian Pharmacy", "Pharmacy", -0.005, 0.004, 4.6, "88 Commerce St", "Mo-Su 08:00-23:00", "+1-555-0122"),
+        ("Golden Cross Care Medicals", "Pharmacy", 0.008, -0.004, 4.5, "19 West High St", "Mo-Sa 08:00-22:00", "+1-555-0123"),
+        ("Sector Fire & Emergency Station 1", "Emergency Services", 0.008, -0.012, 4.9, "900 Emergency Way", "24/7", "+1-555-0131"),
+        ("Metro Trauma Dispatch Center", "Emergency Services", -0.012, -0.004, 4.8, "15 Rescue Road", "24/7", "+1-555-0132"),
+        ("The Rustic Bistro & Grill", "Restaurant", 0.002, 0.007, 4.7, "18 Culinary Court", "Mo-Su 11:00-23:00", "+1-555-0141"),
+        ("Royal Spice Dining & Lounge", "Restaurant", -0.006, 0.010, 4.5, "102 Royal Lane", "Mo-Su 12:00-23:30", "+1-555-0142"),
+        ("Blue Horizon Coffee & Eatery", "Restaurant", 0.009, -0.005, 4.6, "45 Lake View Road", "Mo-Su 07:00-22:00", "+1-555-0143"),
+        ("Grand Horizon Luxury Hotel & Suites", "Hotel & Stays", 0.005, 0.013, 4.7, "500 Skyline Drive", "24/7", "+1-555-0151"),
+        ("Metro Comfort Inn & Suites", "Hotel & Stays", -0.008, -0.011, 4.4, "72 Downtown Loop", "24/7", "+1-555-0152"),
+        ("Central Transit Bus Terminal", "Bus Stands", -0.002, 0.002, 4.2, "1 Terminal Way", "24/7", "+1-555-0161"),
+        ("Metro Interchange Bus Stop", "Bus Stands", 0.012, 0.007, 4.1, "25 East Station Ave", "24/7", "+1-555-0162"),
+        ("Heritage Botanical Gardens", "Tourist Places", 0.014, 0.014, 4.9, "100 Botanical Way", "Mo-Su 06:00-18:30", "+1-555-0171"),
+        ("National Arts & Cultural Museum", "Tourist Places", -0.013, 0.012, 4.8, "60 Museum Row", "Tu-Su 10:00-18:00", "+1-555-0172"),
+        ("Historic City Plaza & Viewpoint", "Tourist Places", 0.003, -0.015, 4.6, "1 Historic Square", "24/7", "+1-555-0173")
+    ]
+    created = []
+    for name, cat, d_lat, d_lng, rat, addr, hrs, phone in sample_definitions:
+        p = Place(
+            name=name,
+            category=cat,
+            latitude=round(lat + d_lat, 6),
+            longitude=round(lng + d_lng, 6),
+            rating=rat,
+            address=f"{addr}, Local Sector",
+            amenity_type=cat.lower(),
+            raw_data={
+                "phone": phone,
+                "opening_hours": hrs,
+                "emergency_room": True if cat in ["Hospital", "Emergency Services"] else False
+            }
+        )
+        db.add(p)
+        created.append(p)
+    try:
+        db.commit()
+        for p in created:
+            db.refresh(p)
+        logger.info(f"Auto-seeded {len(created)} local category venues around ({lat}, {lng}).")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error seeding local venues: {e}")
+    return created
+
 @router.get("", response_model=List[PlaceResponse])
 def get_places(
     latitude: Optional[float] = Query(None, description="Center latitude"),
@@ -295,6 +348,31 @@ def get_places(
         item_dict = place.to_dict()
         item_dict["distance_km"] = dist
         output.append(item_dict)
+
+    # If no venues found within active radius and no text search query, auto-generate local fallback POIs across all categories
+    if len(output) == 0 and latitude is not None and longitude is not None and not search:
+        logger.info(f"0 venues found near ({latitude}, {longitude}). Auto-seeding category fallback POIs...")
+        new_places = seed_dynamic_local_places(latitude, longitude, db)
+        for place in new_places:
+            if category and category != "All":
+                cat_map = {
+                    "Hospital": ["Hospital", "Hospitals"],
+                    "Clinic": ["Clinic", "Clinics"],
+                    "Pharmacy": ["Pharmacy", "Pharmacies"],
+                    "Emergency Services": ["Emergency Services"],
+                    "Restaurant": ["Restaurant", "Dining & Cafe", "Dining & Cafes"],
+                    "Hotel & Stays": ["Hotel & Stays", "Hotels & Stays"],
+                    "Bus Stands": ["Bus Stands", "Bus Stand", "Transit & Bus"],
+                    "Tourist Places": ["Tourist Places"]
+                }
+                allowed = cat_map.get(category, [category])
+                if place.category not in allowed:
+                    continue
+
+            dist = round(haversine_distance_km(latitude, longitude, place.latitude, place.longitude), 2)
+            item_dict = place.to_dict()
+            item_dict["distance_km"] = dist
+            output.append(item_dict)
 
     if latitude is not None and longitude is not None:
         output.sort(key=lambda x: x["distance_km"] if x["distance_km"] is not None else 99999)
