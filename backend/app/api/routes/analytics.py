@@ -22,13 +22,21 @@ def get_driving_route(
     start_lat: float = Query(..., description="Origin latitude"),
     start_lng: float = Query(..., description="Origin longitude"),
     end_lat: float = Query(..., description="Destination latitude"),
-    end_lng: float = Query(..., description="Destination longitude")
+    end_lng: float = Query(..., description="Destination longitude"),
+    mode: str = Query("driving", description="Travel mode: driving, walking, transit, cycling")
 ):
     """
-    Compute driving route, turn-by-turn directions, total distance, and duration
+    Compute multi-modal routing, turn-by-turn directions, total distance, and duration
     via Open Source Routing Machine (OSRM) with automatic fallback.
     """
-    url = f"https://router.project-osrm.org/route/v1/driving/{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
+    # Map travel mode to OSRM profile
+    profile = "driving"
+    if mode in ["walking", "walk"]:
+        profile = "walking"
+    elif mode in ["cycling", "bike", "transit"]:
+        profile = "bicycle"
+
+    url = f"https://router.project-osrm.org/route/v1/{profile}/{start_lng},{start_lat};{end_lng},{end_lat}?overview=full&geometries=geojson&steps=true"
     
     try:
         response = requests.get(url, timeout=10)
@@ -68,6 +76,7 @@ def get_driving_route(
                 
                 return {
                     "status": "success",
+                    "mode": mode,
                     "coordinates": lat_lng_path,
                     "distance_km": round(route.get("distance", 0) / 1000.0, 2),
                     "duration_mins": max(1.0, round(route.get("duration", 0) / 60.0, 1)),
@@ -78,15 +87,19 @@ def get_driving_route(
 
     # Direct line fallback
     dist_km = round(haversine_distance_km(start_lat, start_lng, end_lat, end_lng), 2)
-    dur_mins = max(1.0, round((dist_km / 35.0) * 60.0, 1))
+    # Estimate speed based on mode
+    speed_kmh = 5.0 if profile == "walking" else 15.0 if profile == "bicycle" else 40.0
+    est_duration_mins = max(1.0, round((dist_km / speed_kmh) * 60, 1))
+
     return {
         "status": "fallback",
+        "mode": mode,
         "coordinates": [[start_lat, start_lng], [end_lat, end_lng]],
         "distance_km": dist_km,
-        "duration_mins": dur_mins,
+        "duration_mins": est_duration_mins,
         "steps": [
-            {"instruction": f"Head toward destination ({dist_km} km)", "distance_m": int(dist_km * 1000), "duration_s": int(dur_mins * 60), "type": "depart", "modifier": "straight"},
-            {"instruction": "Arrive at destination", "distance_m": 0, "duration_s": 0, "type": "arrive", "modifier": ""}
+            {"instruction": f"Head directly towards target destination via {mode}", "distance_m": int(dist_km * 1000), "duration_s": int(est_duration_mins * 60), "type": "depart", "modifier": ""},
+            {"instruction": "Arrive at destination target", "distance_m": 0, "duration_s": 0, "type": "arrive", "modifier": ""}
         ]
     }
 

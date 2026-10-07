@@ -7,27 +7,30 @@ import {
   Tooltip,
   Circle, 
   Polyline,
-  useMap,
+  useMap, 
   useMapEvents 
 } from 'react-leaflet';
 import L from 'leaflet';
 import { 
   Compass, 
   ExternalLink,
-  Navigation,
-  Phone,
-  Clock,
-  MapPin,
-  Star,
-  Layers,
-  Maximize2,
-  LocateFixed,
-  Sparkles,
-  ShieldAlert,
-  CheckCircle2,
+  Navigation, 
+  Phone, 
+  Clock, 
+  MapPin, 
+  Star, 
+  Layers, 
   Sliders,
-  Eye,
-  EyeOff
+  Sparkles,
+  Bookmark,
+  Share2,
+  Check,
+  Flame,
+  Car,
+  Footprints,
+  Bike,
+  X,
+  Target
 } from 'lucide-react';
 
 // Crisp Category Colors
@@ -62,15 +65,23 @@ const CATEGORY_SVGS = {
   'Tourist Places': `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18"/><line x1="10" x2="10" y1="18"/><line x1="14" x2="14" y1="18"/><line x1="18" x2="18" y1="18"/><polygon points="12 2 20 7 4 7"/></svg>`
 };
 
-// Create Custom Dynamic POI DivIcon with Vector SVG and Status Indicators
+const RADIUS_PRESETS = [2, 5, 10, 25, 50];
+
+// Create Custom Dynamic POI DivIcon with Vector SVG and Priority Z-Index Stacking
 const createCustomIcon = (place, isSelected = false) => {
   const category = place.category;
   const color = CATEGORY_COLORS[category] || '#00F0FF';
   const svg = CATEGORY_SVGS[category] || CATEGORY_SVGS.Hospital;
 
-  // Status Indicator logic: Emergency & Hospitals get 24/7 dot; high ratings get star badge
   const is24_7 = category === 'Hospital' || category === 'Hospitals' || category === 'Emergency Services';
   const hasHighRating = place.rating && place.rating >= 4.5;
+
+  let priorityClass = 'marker-priority-normal';
+  if (isSelected) {
+    priorityClass = 'marker-priority-active';
+  } else if (is24_7 || hasHighRating) {
+    priorityClass = 'marker-priority-high';
+  }
 
   let statusBadgeHtml = '';
   if (is24_7) {
@@ -108,11 +119,11 @@ const createCustomIcon = (place, isSelected = false) => {
   }
 
   const ringStyle = isSelected 
-    ? `box-shadow: 0 0 0 4px #00F0FF, 0 0 28px rgba(0, 240, 255, 1); transform: scale(1.22); z-index: 9999;` 
+    ? `box-shadow: 0 0 0 4px #00F0FF, 0 0 30px rgba(0, 240, 255, 1); transform: scale(1.22);` 
     : `box-shadow: 0 0 14px ${color}88, 0 3px 10px rgba(0, 0, 0, 0.85);`;
 
   return L.divIcon({
-    className: 'antigravity-poi-marker',
+    className: `antigravity-poi-marker ${priorityClass}`,
     html: `
       <div style="
         position: relative;
@@ -144,7 +155,7 @@ const createClusterIcon = (count, dominantCategory = 'Hospital') => {
   const size = count < 10 ? 40 : count < 50 ? 46 : 52;
   
   return L.divIcon({
-    className: 'antigravity-cluster-marker',
+    className: 'antigravity-cluster-marker marker-priority-high',
     html: `
       <div style="
         position: relative;
@@ -190,7 +201,7 @@ const createClusterIcon = (count, dominantCategory = 'Hospital') => {
 
 // User GPS Pulse DivIcon
 const userLocationIcon = L.divIcon({
-  className: 'custom-user-marker',
+  className: 'custom-user-marker marker-priority-active',
   html: `
     <div style="position: relative; width: 36px; height: 36px;">
       <div style="
@@ -221,7 +232,7 @@ const userLocationIcon = L.divIcon({
 
 // Destination Target DivIcon
 const destinationIcon = L.divIcon({
-  className: 'custom-dest-marker',
+  className: 'custom-dest-marker marker-priority-active',
   html: `
     <div style="
       background: radial-gradient(circle at 35% 35%, #F43F5E, #881337);
@@ -245,7 +256,7 @@ const destinationIcon = L.divIcon({
   popupAnchor: [0, -20]
 });
 
-// Smart Viewport, Pan & Auto-Fit Controller
+// Viewport Animation & Auto-Fit Controller
 function MapViewController({ 
   center, 
   zoom, 
@@ -258,14 +269,12 @@ function MapViewController({
   const prevPlacesLength = useRef(places?.length || 0);
 
   useEffect(() => {
-    // 1. If active navigation route, fit bounds to the whole route path
     if (routeCoordinates && routeCoordinates.length > 1) {
       const bounds = L.latLngBounds(routeCoordinates);
       map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
       return;
     }
 
-    // 2. If a specific POI is selected, smooth flyTo animation with focus zoom
     if (selectedPlace) {
       map.flyTo([selectedPlace.latitude, selectedPlace.longitude], 16, { 
         duration: 1.2,
@@ -274,7 +283,6 @@ function MapViewController({
       return;
     }
 
-    // 3. If places changed and auto-fit is enabled, frame all visible places
     if (autoFitView && places && places.length > 0 && places.length !== prevPlacesLength.current) {
       prevPlacesLength.current = places.length;
       const validCoords = places.filter(p => p.latitude && p.longitude).map(p => [p.latitude, p.longitude]);
@@ -285,7 +293,6 @@ function MapViewController({
       }
     }
 
-    // 4. Fallback to center position
     if (center) {
       map.flyTo(center, zoom || 13, { duration: 1.0 });
     }
@@ -294,13 +301,129 @@ function MapViewController({
   return null;
 }
 
+// Bounding Box Auto-Fetch Viewport Listener
+function ViewportListener({ isEnabled, onViewportChange }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!isEnabled || !onViewportChange) return;
+    const bounds = map.getBounds();
+    onViewportChange({
+      min_lat: bounds.getSouth(),
+      max_lat: bounds.getNorth(),
+      min_lng: bounds.getWest(),
+      max_lng: bounds.getEast()
+    });
+  }, [isEnabled, map, onViewportChange]);
+
+  useMapEvents({
+    moveend: () => {
+      if (isEnabled && onViewportChange) {
+        const bounds = map.getBounds();
+        onViewportChange({
+          min_lat: bounds.getSouth(),
+          max_lat: bounds.getNorth(),
+          min_lng: bounds.getWest(),
+          max_lng: bounds.getEast()
+        });
+      }
+    }
+  });
+
+  return null;
+}
+
+// High-Performance Density Heatmap Canvas Overlay
+function HeatmapCanvasLayer({ places, isActive }) {
+  const map = useMap();
+  const canvasRef = useRef(null);
+
+  const drawHeatmap = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    if (!isActive || !places || places.length === 0) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+
+    const size = map.getSize();
+    canvas.width = size.x;
+    canvas.height = size.y;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'lighter';
+
+    const zoom = map.getZoom();
+    const baseRadius = Math.max(26, Math.min(70, zoom * 4.5));
+
+    places.forEach((p) => {
+      if (!p.latitude || !p.longitude) return;
+      const point = map.latLngToContainerPoint([p.latitude, p.longitude]);
+      if (point.x < -100 || point.x > size.x + 100 || point.y < -100 || point.y > size.y + 100) return;
+
+      const catColor = CATEGORY_COLORS[p.category] || '#00F0FF';
+      const rad = baseRadius;
+
+      const grad = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, rad);
+      grad.addColorStop(0, `${catColor}cc`);
+      grad.addColorStop(0.35, 'rgba(0, 240, 255, 0.45)');
+      grad.addColorStop(0.7, 'rgba(168, 85, 247, 0.25)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, rad, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  };
+
+  useEffect(() => {
+    drawHeatmap();
+  }, [places, isActive, map]);
+
+  useMapEvents({
+    move: drawHeatmap,
+    zoom: drawHeatmap,
+    resize: drawHeatmap,
+    viewreset: drawHeatmap
+  });
+
+  if (!isActive) return null;
+
+  return (
+    <div 
+      className="leaflet-pane leaflet-overlay-pane" 
+      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 450 }}
+    >
+      <canvas
+        ref={canvasRef}
+        className="antigravity-heatmap-canvas"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          pointerEvents: 'none',
+          mixBlendMode: 'screen',
+          opacity: 0.88
+        }}
+      />
+    </div>
+  );
+}
+
 // Subcomponent managing Spatial Clustering & Individual Markers
 function ClusteredLayer({
   places,
   selectedPlace,
   onSelectPlace,
   onGetDirections,
-  isClusteringEnabled
+  isClusteringEnabled,
+  bookmarkedIds,
+  onToggleBookmark,
+  onToast
 }) {
   const map = useMap();
   const [zoom, setZoom] = useState(map.getZoom());
@@ -310,11 +433,9 @@ function ClusteredLayer({
     moveend: () => setZoom(map.getZoom())
   });
 
-  // Calculate Spatial Clusters at current map zoom
   const clusterData = useMemo(() => {
     if (!places || places.length === 0) return [];
 
-    // When clustering is off or zoomed into street level (zoom >= 15), show individual markers
     if (!isClusteringEnabled || zoom >= 15) {
       return places.map(p => ({
         isCluster: false,
@@ -357,7 +478,6 @@ function ClusteredLayer({
         const avgLat = group.reduce((acc, p) => acc + p.latitude, 0) / group.length;
         const avgLng = group.reduce((acc, p) => acc + p.longitude, 0) / group.length;
 
-        // Tally category counts and dominant category
         const counts = {};
         group.forEach(p => counts[p.category] = (counts[p.category] || 0) + 1);
 
@@ -386,7 +506,6 @@ function ClusteredLayer({
     return clusters;
   }, [places, zoom, map, isClusteringEnabled]);
 
-  // Click cluster handler to smoothly zoom into cluster extent
   const handleClusterClick = (cluster) => {
     if (cluster.places.length <= 1) return;
     const coords = cluster.places.map(p => [p.latitude, p.longitude]);
@@ -395,6 +514,16 @@ function ClusteredLayer({
       map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
     } else {
       map.flyTo([cluster.latitude, cluster.longitude], Math.min(map.getZoom() + 2, 16), { duration: 0.8 });
+    }
+  };
+
+  const handleShare = (e, place) => {
+    e.stopPropagation();
+    const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${place.latitude},${place.longitude}&travelmode=driving`;
+    const shareText = `${place.name} (${place.category}) - ${place.address || 'Location'}\nGoogle Maps: ${googleMapsUrl}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareText);
+      if (onToast) onToast(`Copied ${place.name} link!`);
     }
   };
 
@@ -411,7 +540,6 @@ function ClusteredLayer({
                 click: () => handleClusterClick(item)
               }}
             >
-              {/* Quick Hover Tooltip for Cluster */}
               <Tooltip direction="top" offset={[0, -22]} opacity={0.95} className="antigravity-tooltip">
                 <div className="font-mono text-[11px] text-white flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[item.dominantCategory] || '#00F0FF' }}></span>
@@ -425,10 +553,20 @@ function ClusteredLayer({
 
         const place = item.place;
         const isSelected = selectedPlace?.id === place.id;
+        const isBookmarked = bookmarkedIds ? (
+          bookmarkedIds instanceof Set ? bookmarkedIds.has(place.id) : bookmarkedIds.includes?.(place.id)
+        ) : false;
+
         const raw = place.raw_data || {};
         const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${place.latitude},${place.longitude}&travelmode=driving`;
+        const appleMapsUrl = `https://maps.apple.com/?daddr=${place.latitude},${place.longitude}&dirflg=d`;
+        const wazeUrl = `https://waze.com/ul?ll=${place.latitude},${place.longitude}&navigate=yes`;
         const color = CATEGORY_COLORS[place.category] || '#00F0FF';
         const is24_7 = place.category === 'Hospital' || place.category === 'Hospitals' || place.category === 'Emergency Services';
+
+        const dist = place.distance_km || 0;
+        const driveMinutes = Math.max(1, Math.round(dist * 1.5 + 2));
+        const walkMinutes = Math.max(2, Math.round(dist * 12));
 
         return (
           <Marker
@@ -439,7 +577,6 @@ function ClusteredLayer({
               click: () => onSelectPlace(place)
             }}
           >
-            {/* Quick Lightweight Hover Tooltip */}
             <Tooltip direction="top" offset={[0, -20]} opacity={0.95} className="antigravity-tooltip">
               <div className="flex items-center gap-1.5 font-mono text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }}></span>
@@ -450,14 +587,14 @@ function ClusteredLayer({
 
             {/* Rich High-Density Glassmorphic Popup */}
             <Popup>
-              <div className="p-1 text-slate-100 max-w-[270px]">
-                {/* Header Pills: Category + Rating + Status */}
-                <div className="flex items-center justify-between gap-1.5 mb-2 flex-wrap">
-                  <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/30">
-                    {place.category}
-                  </span>
-                  
-                  <div className="flex items-center gap-1">
+              <div className="p-1 text-slate-100 max-w-[280px]">
+                {/* Header: Category + 24/7/Open + Rating + Bookmark Toggle */}
+                <div className="flex items-center justify-between gap-1.5 mb-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/30">
+                      {place.category}
+                    </span>
+                    
                     {is24_7 ? (
                       <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 rounded-md bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/30 font-bold flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#10B981] animate-pulse"></span>
@@ -475,12 +612,50 @@ function ClusteredLayer({
                       </span>
                     )}
                   </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    {onToggleBookmark && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleBookmark(place);
+                        }}
+                        className={`p-1 rounded-md transition-all cursor-pointer ${
+                          isBookmarked 
+                            ? 'text-[#F59E0B] bg-[#F59E0B]/20' 
+                            : 'text-slate-400 hover:text-white hover:bg-white/10'
+                        }`}
+                        title={isBookmarked ? 'Bookmarked' : 'Add to bookmarks'}
+                      >
+                        <Bookmark className="w-3.5 h-3.5 fill-current" />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => handleShare(e, place)}
+                      className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                      title="Share link"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Venue Name */}
                 <strong className="text-sm font-bold text-white block mb-1.5 leading-snug">
                   {place.name}
                 </strong>
+
+                {/* Travel Time & Distance Chips */}
+                {place.distance_km !== undefined && place.distance_km !== null && (
+                  <div className="flex items-center gap-1.5 mb-2 font-mono text-[10px]">
+                    <span className="px-2 py-0.5 rounded-lg bg-[#00F0FF]/10 text-[#00F0FF] border border-[#00F0FF]/25 flex items-center gap-1">
+                      🚗 ~{driveMinutes}m ({place.distance_km} km)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-lg bg-white/5 text-slate-300 border border-white/10 flex items-center gap-1">
+                      🚶 ~{walkMinutes}m
+                    </span>
+                  </div>
+                )}
 
                 {/* Venue Meta Details */}
                 <div className="space-y-1 text-xs text-slate-400 mb-2.5">
@@ -504,17 +679,10 @@ function ClusteredLayer({
                       <a href={`tel:${raw.phone}`} className="hover:underline">{raw.phone}</a>
                     </div>
                   )}
-
-                  {place.distance_km !== undefined && place.distance_km !== null && (
-                    <div className="font-mono text-xs text-[#00F0FF] font-semibold pt-1 flex items-center gap-1">
-                      <Navigation className="w-3 h-3 text-[#00F0FF]" />
-                      {place.distance_km} km from active GPS
-                    </div>
-                  )}
                 </div>
 
-                {/* Quick Action Buttons */}
-                <div className="pt-2.5 border-t border-white/10 flex items-center justify-between gap-1.5 font-mono text-xs">
+                {/* Action Buttons: Route + Call + External Navigation Bridges */}
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-1.5 font-mono text-xs">
                   <button
                     onClick={() => onGetDirections(place)}
                     className="flex-1 py-1.5 px-2 rounded-xl bg-[#00F0FF] hover:bg-[#00F0FF]/90 text-[#07090E] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer shadow-[0_0_12px_rgba(0,240,255,0.4)]"
@@ -523,26 +691,35 @@ function ClusteredLayer({
                     Route
                   </button>
 
-                  {raw.phone && (
-                    <a
-                      href={`tel:${raw.phone}`}
-                      className="py-1.5 px-2 rounded-xl bg-[#10B981]/15 hover:bg-[#10B981]/25 text-[#10B981] border border-[#10B981]/30 flex items-center justify-center gap-1 transition-all cursor-pointer"
-                      title="Call Venue"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      Call
-                    </a>
-                  )}
-
                   <a
                     href={googleMapsUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="py-1.5 px-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer border border-white/10"
-                    title="Launch Google Maps"
+                    className="py-1.5 px-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 flex items-center justify-center gap-1 transition-all cursor-pointer border border-white/10"
+                    title="Google Maps"
                   >
-                    <ExternalLink className="w-3.5 h-3.5 text-[#00F0FF]" />
+                    <ExternalLink className="w-3 h-3 text-[#00F0FF]" />
                     Maps
+                  </a>
+
+                  <a
+                    href={appleMapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-1.5 px-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 flex items-center justify-center transition-all cursor-pointer border border-white/10"
+                    title="Apple Maps"
+                  >
+                    Apple
+                  </a>
+
+                  <a
+                    href={wazeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-1.5 px-2 rounded-xl bg-[#00F0FF]/15 hover:bg-[#00F0FF]/25 text-[#00F0FF] flex items-center justify-center transition-all cursor-pointer border border-[#00F0FF]/30"
+                    title="Waze"
+                  >
+                    Waze
                   </a>
                 </div>
               </div>
@@ -556,13 +733,23 @@ function ClusteredLayer({
 
 // Master MapView Component
 export default function MapView({
-  places,
+  places = [],
   userLocation,
-  radiusKm,
+  radiusKm = 25,
+  setRadiusKm,
   selectedPlace,
   onSelectPlace,
   onGetDirections,
-  activeRoute
+  activeRoute,
+  onClearRoute,
+  travelMode = 'driving',
+  onTravelModeChange,
+  viewportMode = false,
+  setViewportMode,
+  onViewportChange,
+  bookmarkedIds,
+  onToggleBookmark,
+  onToast
 }) {
   const centerPosition = [userLocation.latitude, userLocation.longitude];
 
@@ -570,6 +757,7 @@ export default function MapView({
   const [isClusteringEnabled, setIsClusteringEnabled] = useState(true);
   const [autoFitView, setAutoFitView] = useState(true);
   const [tileMode, setTileMode] = useState('cyber'); // 'cyber' | 'deepspace' | 'standard'
+  const [isHeatmapActive, setIsHeatmapActive] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
 
   // Tile CSS Filter Mapping
@@ -580,7 +768,6 @@ export default function MapView({
     if (tileMode === 'standard') {
       return { filter: 'brightness(0.85) contrast(1.1)' };
     }
-    // Default 'cyber' Antigravity tile filter
     return { filter: 'brightness(0.6) invert(1) contrast(3.4) hue-rotate(200deg) saturate(0.28) brightness(0.78)' };
   }, [tileMode]);
 
@@ -609,6 +796,18 @@ export default function MapView({
           selectedPlace={selectedPlace}
           places={places}
           autoFitView={autoFitView}
+        />
+
+        {/* Bounding Box Viewport Listener */}
+        <ViewportListener
+          isEnabled={viewportMode}
+          onViewportChange={onViewportChange}
+        />
+
+        {/* Density Heatmap Canvas Overlay */}
+        <HeatmapCanvasLayer
+          places={places}
+          isActive={isHeatmapActive}
         />
 
         {/* User GPS Center Marker with Radar Ping */}
@@ -654,10 +853,9 @@ export default function MapView({
           />
         )}
 
-        {/* Active Navigation Polyline */}
+        {/* Active Navigation Polyline with glowing cyan casing */}
         {activeRoute?.coordinates && activeRoute.coordinates.length > 0 && (
           <>
-            {/* Glow casing line */}
             <Polyline
               positions={activeRoute.coordinates}
               pathOptions={{
@@ -668,7 +866,6 @@ export default function MapView({
                 lineJoin: 'round'
               }}
             />
-            {/* Foreground crisp path line */}
             <Polyline
               positions={activeRoute.coordinates}
               pathOptions={{
@@ -709,8 +906,94 @@ export default function MapView({
           onSelectPlace={onSelectPlace}
           onGetDirections={onGetDirections}
           isClusteringEnabled={isClusteringEnabled}
+          bookmarkedIds={bookmarkedIds}
+          onToggleBookmark={onToggleBookmark}
+          onToast={onToast}
         />
       </MapContainer>
+
+      {/* Navigation In-App Multi-Modal Flight Deck (When Route is Active) */}
+      {activeRoute && (
+        <div className="absolute top-4 left-4 z-[400] antigravity-glass p-3 rounded-2xl border border-[#00F0FF]/40 shadow-[0_0_25px_rgba(0,240,255,0.25)] flex items-center gap-3 backdrop-blur-xl animate-in fade-in slide-in-from-top-3">
+          <div className="flex items-center gap-1.5 font-mono text-xs">
+            <button
+              onClick={() => onTravelModeChange && onTravelModeChange('driving')}
+              className={`px-2.5 py-1 rounded-xl flex items-center gap-1 transition-all cursor-pointer border ${
+                travelMode === 'driving'
+                  ? 'bg-[#00F0FF] text-[#07090E] font-bold border-[#00F0FF]'
+                  : 'bg-white/5 text-slate-300 border-white/10 hover:text-white'
+              }`}
+            >
+              <Car className="w-3.5 h-3.5" />
+              Drive
+            </button>
+            <button
+              onClick={() => onTravelModeChange && onTravelModeChange('walking')}
+              className={`px-2.5 py-1 rounded-xl flex items-center gap-1 transition-all cursor-pointer border ${
+                travelMode === 'walking'
+                  ? 'bg-[#00F0FF] text-[#07090E] font-bold border-[#00F0FF]'
+                  : 'bg-white/5 text-slate-300 border-white/10 hover:text-white'
+              }`}
+            >
+              <Footprints className="w-3.5 h-3.5" />
+              Walk
+            </button>
+            <button
+              onClick={() => onTravelModeChange && onTravelModeChange('cycling')}
+              className={`px-2.5 py-1 rounded-xl flex items-center gap-1 transition-all cursor-pointer border ${
+                travelMode === 'cycling'
+                  ? 'bg-[#00F0FF] text-[#07090E] font-bold border-[#00F0FF]'
+                  : 'bg-white/5 text-slate-300 border-white/10 hover:text-white'
+              }`}
+            >
+              <Bike className="w-3.5 h-3.5" />
+              Transit
+            </button>
+          </div>
+
+          <div className="h-4 w-px bg-white/20"></div>
+
+          <div className="font-mono text-xs">
+            <span className="text-[#00F0FF] font-bold">{activeRoute.duration_mins}m</span>
+            <span className="text-slate-400 ml-1.5">({activeRoute.distance_km} km)</span>
+          </div>
+
+          {onClearRoute && (
+            <button
+              onClick={onClearRoute}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+              title="Close Route"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* On-Map Radial Radius Presets HUD (Bottom Left) */}
+      {setRadiusKm && !activeRoute && (
+        <div className="absolute bottom-5 left-5 z-[400] antigravity-glass p-2 px-3 rounded-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-md flex items-center gap-2">
+          <div className="flex items-center gap-1 text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider mr-1">
+            <Target className="w-3 h-3 text-[#00F0FF]" />
+            Radius:
+          </div>
+          <div className="flex items-center gap-1">
+            {RADIUS_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                onClick={() => setRadiusKm(preset)}
+                className={`px-2 py-0.5 rounded-lg font-mono text-[11px] font-bold transition-all cursor-pointer border ${
+                  radiusKm === preset
+                    ? 'bg-[#00F0FF] text-[#07090E] border-[#00F0FF] shadow-[0_0_10px_rgba(0,240,255,0.4)]'
+                    : 'bg-white/5 text-slate-300 border-white/10 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {preset}k
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Interactive Map Overlay Controls (Top Right) */}
       <div className="absolute top-4 right-4 z-[400] flex flex-col items-end gap-2">
@@ -734,6 +1017,47 @@ export default function MapView({
               </span>
               <span className="text-[10px] font-mono text-slate-400">{places.length} POIs</span>
             </div>
+
+            {/* Density Heatmap Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-slate-200 font-semibold flex items-center gap-1">
+                  <Flame className="w-3 h-3 text-[#A855F7]" />
+                  Density Heatmap
+                </span>
+                <span className="text-[10px] text-slate-400">Canvas density glow</span>
+              </div>
+              <button
+                onClick={() => setIsHeatmapActive(!isHeatmapActive)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                  isHeatmapActive 
+                    ? 'bg-[#A855F7]/25 text-[#A855F7] border-[#A855F7]/50 shadow-[0_0_10px_rgba(168,85,247,0.3)]'
+                    : 'bg-white/5 text-slate-400 border-white/10'
+                }`}
+              >
+                {isHeatmapActive ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            {/* Viewport Auto-Filter Toggle */}
+            {setViewportMode && (
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-slate-200 font-semibold block">Viewport Filter</span>
+                  <span className="text-[10px] text-slate-400">Only visible screen area</span>
+                </div>
+                <button
+                  onClick={() => setViewportMode(!viewportMode)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer border ${
+                    viewportMode 
+                      ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 shadow-[0_0_8px_rgba(0,240,255,0.2)]'
+                      : 'bg-white/5 text-slate-400 border-white/10'
+                  }`}
+                >
+                  {viewportMode ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            )}
 
             {/* Clustering Toggle */}
             <div className="flex items-center justify-between">
@@ -814,47 +1138,47 @@ export default function MapView({
       </div>
 
       {/* Floating Map Legend (Bottom Right) */}
-      <div className="absolute bottom-5 right-5 z-[400] antigravity-glass p-3.5 rounded-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.6)] text-xs space-y-2.5 backdrop-blur-md">
+      <div className="absolute bottom-5 right-5 z-[400] antigravity-glass p-3 rounded-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.6)] text-xs space-y-2 backdrop-blur-md hidden sm:block">
         <div className="flex items-center justify-between gap-3">
           <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400 block font-bold">
             POI Indicators
           </span>
           <span className="font-mono text-[10px] text-[#00F0FF] font-semibold">
-            {isClusteringEnabled ? 'CLUSTERING ACTIVE' : 'RAW NODES'}
+            {isClusteringEnabled ? 'CLUSTERING' : 'NODES'}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-slate-300 font-mono text-[11px]">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#F43F5E] shadow-[0_0_6px_#F43F5E]"></span>
+        <div className="grid grid-cols-2 gap-x-3.5 gap-y-1 text-slate-300 font-mono text-[10px]">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#F43F5E] shadow-[0_0_6px_#F43F5E]"></span>
             <span>Hospital</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#06B6D4] shadow-[0_0_6px_#06B6D4]"></span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#06B6D4] shadow-[0_0_6px_#06B6D4]"></span>
             <span>Clinic</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] shadow-[0_0_6px_#10B981]"></span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#10B981] shadow-[0_0_6px_#10B981]"></span>
             <span>Pharmacy</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444] shadow-[0_0_6px_#EF4444]"></span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#EF4444] shadow-[0_0_6px_#EF4444]"></span>
             <span>Emergency</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#A855F7] shadow-[0_0_6px_#A855F7]"></span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#A855F7] shadow-[0_0_6px_#A855F7]"></span>
             <span>Dining</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6] shadow-[0_0_6px_#3B82F6]"></span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#3B82F6] shadow-[0_0_6px_#3B82F6]"></span>
             <span>Hotels</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#14B8A6] shadow-[0_0_6px_#14B8A6]"></span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#14B8A6] shadow-[0_0_6px_#14B8A6]"></span>
             <span>Bus Stands</span>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#D946EF] shadow-[0_0_6px_#D946EF]"></span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#D946EF] shadow-[0_0_6px_#D946EF]"></span>
             <span>Tourist</span>
           </div>
         </div>

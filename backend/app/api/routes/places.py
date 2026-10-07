@@ -166,21 +166,67 @@ def sync_live_alias(
 ):
     return sync_osm_data(lat=latitude, lng=longitude, radius_km=radius_km, db=db)
 
+@router.get("/autocomplete")
+def autocomplete_places(
+    q: str = Query(..., min_length=1, description="Fuzzy search term"),
+    limit: int = Query(8, le=20),
+    db: Session = Depends(get_db)
+):
+    """Search-as-you-type Geo-Autocomplete with fuzzy matching."""
+    search_pattern = f"%{q.strip()}%"
+    places = db.query(Place).filter(
+        or_(
+            Place.name.ilike(search_pattern),
+            Place.address.ilike(search_pattern),
+            Place.amenity_type.ilike(search_pattern)
+        )
+    ).limit(limit).all()
+
+    return [
+        {
+            "id": p.id,
+            "name": p.name,
+            "category": p.category,
+            "address": p.address,
+            "latitude": p.latitude,
+            "longitude": p.longitude,
+            "rating": p.rating,
+            "amenity_type": p.amenity_type
+        }
+        for p in places
+    ]
+
 @router.get("", response_model=List[PlaceResponse])
 def get_places(
     latitude: Optional[float] = Query(None, description="Center latitude"),
     longitude: Optional[float] = Query(None, description="Center longitude"),
     radius_km: Optional[float] = Query(25.0, description="Max radius filter in km"),
+    min_lat: Optional[float] = Query(None, description="Bounding box min latitude"),
+    max_lat: Optional[float] = Query(None, description="Bounding box max latitude"),
+    min_lng: Optional[float] = Query(None, description="Bounding box min longitude"),
+    max_lng: Optional[float] = Query(None, description="Bounding box max longitude"),
     category: Optional[str] = Query(None, description="Filter by category"),
     search: Optional[str] = Query(None, description="Search term"),
     min_rating: Optional[float] = Query(0.0, description="Minimum rating"),
+    open_now: Optional[bool] = Query(False, description="Filter places open now or with hours"),
+    is_24_7: Optional[bool] = Query(False, description="Filter 24/7 emergency facilities"),
+    has_phone: Optional[bool] = Query(False, description="Filter places with phone number"),
     limit: int = Query(1000, ge=1, le=5000),
     db: Session = Depends(get_db)
 ):
-    """Retrieve POIs matching filters and radius."""
+    """Retrieve POIs matching filters, radial radius, or bounding box extent."""
     query = db.query(Place)
 
-    # Normalize category filtering to handle plural/singular equivalents
+    # 1. Bounding box spatial filter (if provided)
+    if min_lat is not None and max_lat is not None and min_lng is not None and max_lng is not None:
+        query = query.filter(
+            Place.latitude >= min_lat,
+            Place.latitude <= max_lat,
+            Place.longitude >= min_lng,
+            Place.longitude <= max_lng
+        )
+
+    # 2. Normalize category filtering to handle plural/singular equivalents
     if category and category != "All":
         cat_map = {
             "Hospital": ["Hospital", "Hospitals"],
@@ -201,8 +247,18 @@ def get_places(
         allowed = cat_map.get(category, [category])
         query = query.filter(Place.category.in_(allowed))
 
+    # 3. 24/7 filter
+    if is_24_7:
+        query = query.filter(
+            or_(
+                Place.category.in_(["Hospital", "Hospitals", "Emergency Services"]),
+                Place.amenity_type.in_(["hospital", "fire_station", "police"])
+            )
+        )
+
+    # 4. Text search
     if search:
-        search_pattern = f"%{search}%"
+        search_pattern = f"%{search.strip()}%"
         query = query.filter(
             or_(
                 Place.name.ilike(search_pattern),
@@ -211,6 +267,7 @@ def get_places(
             )
         )
 
+    # 5. Rating filter
     if min_rating > 0:
         query = query.filter(Place.rating >= min_rating)
 
@@ -218,10 +275,21 @@ def get_places(
 
     output = []
     for place in results:
+        # Check boolean filters against raw_data if requested
+        raw = place.raw_data or {}
+        if has_phone and not raw.get("phone"):
+            continue
+        if open_now:
+            # Check if 24/7 or has opening hours defined
+            is_emergency = place.category in ["Hospital", "Hospitals", "Emergency Services"]
+            if not is_emergency and not raw.get("opening_hours"):
+                continue
+
         dist = None
         if latitude is not None and longitude is not None:
             dist = round(haversine_distance_km(latitude, longitude, place.latitude, place.longitude), 2)
-            if dist > radius_km:
+            # If not using bbox, enforce circular radius_km
+            if min_lat is None and radius_km is not None and dist > radius_km:
                 continue
 
         item_dict = place.to_dict()

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import { 
   Search, 
   MapPin, 
@@ -14,7 +15,15 @@ import {
   Bus,
   Layers,
   SlidersHorizontal,
-  Compass
+  Compass,
+  Clock,
+  ShieldAlert,
+  Phone,
+  Star,
+  History,
+  X,
+  Scan,
+  Check
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -29,6 +38,8 @@ const CATEGORIES = [
   { id: 'Tourist Places', label: 'Tourist Places', icon: Landmark, accent: 'fuchsia' },
 ];
 
+const RADIUS_PRESETS = [2, 5, 10, 25, 50];
+
 export default function FilterPanel({
   searchTerm,
   setSearchTerm,
@@ -38,11 +49,92 @@ export default function FilterPanel({
   setRadiusKm,
   minRating,
   setMinRating,
+  openNow = false,
+  setOpenNow,
+  is24_7 = false,
+  setIs24_7,
+  hasPhone = false,
+  setHasPhone,
+  nearTransit = false,
+  setNearTransit,
+  viewportMode = false,
+  setViewportMode,
   onOpenAnalytics,
   onResetLocation,
   isLiveLoading,
-  onFetchLiveOSM
+  onFetchLiveOSM,
+  onSelectSuggestion
 }) {
+  // Autocomplete State
+  const [suggestions, setSuggestions] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [recentSearches, setRecentSearches] = useState([]);
+  const searchContainerRef = useRef(null);
+
+  // Load Recent Searches from localStorage
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('geopulse_recent_searches') || '[]');
+      setRecentSearches(saved);
+    } catch {
+      setRecentSearches([]);
+    }
+  }, []);
+
+  // Save recent search
+  const saveRecentSearch = (text) => {
+    if (!text || !text.trim()) return;
+    const clean = text.trim();
+    const updated = [clean, ...recentSearches.filter(s => s !== clean)].slice(0, 5);
+    setRecentSearches(updated);
+    try {
+      localStorage.setItem('geopulse_recent_searches', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  };
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  // Search-as-you-type Autocomplete Fetch
+  useEffect(() => {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await axios.get('/api/v1/places/autocomplete', {
+          params: { q: searchTerm.trim(), limit: 6 }
+        });
+        setSuggestions(res.data || []);
+      } catch (err) {
+        // Fallback silently if offline
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const handleSelectAutocomplete = (item) => {
+    saveRecentSearch(item.name);
+    setSearchTerm(item.name);
+    setShowDropdown(false);
+    if (onSelectSuggestion) {
+      onSelectSuggestion(item);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4 p-5 rounded-2xl bg-[#0B0F19]/80 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
       
@@ -57,29 +149,170 @@ export default function FilterPanel({
               SPATIAL RADAR
               <span className="w-1.5 h-1.5 rounded-full bg-[#00F0FF] shadow-[0_0_8px_#00F0FF] animate-pulse"></span>
             </h2>
-            <p className="text-[11px] font-mono text-[#9CA3AF]">v2.5 ANTIGRAVITY ENGINE</p>
+            <p className="text-[11px] font-mono text-[#9CA3AF]">v3.0 INTELLIGENCE ENGINE</p>
           </div>
         </div>
 
         <button
           onClick={onOpenAnalytics}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-[#00F0FF]/20 via-[#A855F7]/20 to-[#3B82F6]/20 hover:from-[#00F0FF]/30 hover:to-[#A855F7]/30 text-[#00F0FF] border border-[#00F0FF]/40 shadow-[0_0_15px_rgba(0,240,255,0.2)] hover:shadow-[0_0_20px_rgba(0,240,255,0.35)] transition-all cursor-pointer"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-[#00F0FF]/20 via-[#A855F7]/20 to-[#3B82F6]/20 hover:from-[#00F0FF]/30 hover:to-[#A855F7]/30 text-[#00F0FF] border border-[#00F0FF]/40 shadow-[0_0_15px_rgba(0,240,255,0.2)] hover:shadow-[0_0_20px_rgba(0,240,255,0.35)] transition-all cursor-pointer font-mono"
         >
           <Sparkles className="w-3.5 h-3.5 text-[#00F0FF]" />
           Analytics
         </button>
       </div>
 
-      {/* Futuristic Search Input */}
-      <div className="relative">
-        <Search className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within:text-[#00F0FF]" />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search venues, hospitals, hotels, bus stops..."
-          className="w-full pl-10 pr-4 py-2.5 bg-[#07090E]/90 border border-white/10 rounded-xl text-xs text-[#F3F4F6] placeholder-[#4B5563] font-sans focus:outline-none focus:border-[#00F0FF] focus:ring-1 focus:ring-[#00F0FF] focus:shadow-[0_0_15px_rgba(0,240,255,0.25)] transition-all"
-        />
+      {/* Search-as-you-type Geo-Autocomplete Input */}
+      <div ref={searchContainerRef} className="relative z-30">
+        <div className="relative">
+          <Search className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within:text-[#00F0FF]" />
+          <input
+            type="text"
+            value={searchTerm}
+            onFocus={() => setShowDropdown(true)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setShowDropdown(true);
+            }}
+            placeholder="Search venues, clinics, hotels, bus stops..."
+            className="w-full pl-10 pr-9 py-2.5 bg-[#07090E]/90 border border-white/10 rounded-xl text-xs text-[#F3F4F6] placeholder-[#4B5563] font-sans focus:outline-none focus:border-[#00F0FF] focus:ring-1 focus:ring-[#00F0FF] focus:shadow-[0_0_15px_rgba(0,240,255,0.25)] transition-all"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setSuggestions([]);
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Floating Autocomplete Dropdown */}
+        {showDropdown && (suggestions.length > 0 || recentSearches.length > 0) && (
+          <div className="absolute top-full left-0 right-0 mt-2 autocomplete-dropdown rounded-xl overflow-hidden z-50 text-xs font-mono shadow-2xl">
+            {/* Live Matches */}
+            {suggestions.length > 0 && (
+              <div className="p-2 border-b border-white/10">
+                <span className="text-[10px] text-[#00F0FF] uppercase tracking-wider block px-2 py-1 font-bold">
+                  Instant Suggestions
+                </span>
+                <div className="space-y-0.5">
+                  {suggestions.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => handleSelectAutocomplete(item)}
+                      className="p-2 rounded-lg hover:bg-[#00F0FF]/15 cursor-pointer flex items-center justify-between transition-colors text-slate-200"
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <MapPin className="w-3 h-3 text-[#00F0FF] shrink-0" />
+                        <span className="font-semibold text-white truncate">{item.name}</span>
+                        <span className="text-[10px] text-slate-400 uppercase">({item.category})</span>
+                      </div>
+                      {item.rating > 0 && (
+                        <span className="text-[#F59E0B] font-bold text-[10px] shrink-0 ml-2">★{item.rating}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Recent Searches History */}
+            {recentSearches.length > 0 && (
+              <div className="p-2">
+                <span className="text-[10px] text-slate-400 uppercase tracking-wider block px-2 py-1 flex items-center gap-1.5 font-bold">
+                  <History className="w-3 h-3 text-slate-400" />
+                  Recent Searches
+                </span>
+                <div className="flex flex-wrap gap-1.5 px-2 pt-1 pb-1">
+                  {recentSearches.map((rec, i) => (
+                    <span
+                      key={i}
+                      onClick={() => {
+                        setSearchTerm(rec);
+                        setShowDropdown(false);
+                      }}
+                      className="px-2 py-1 rounded-md bg-white/5 hover:bg-[#00F0FF]/20 text-slate-300 hover:text-[#00F0FF] border border-white/10 cursor-pointer text-[10px] transition-colors"
+                    >
+                      {rec}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Smart Multi-Attribute Boolean Filters */}
+      <div className="space-y-1.5">
+        <label className="text-[11px] font-mono uppercase tracking-wider text-[#9CA3AF] block">
+          SMART ATTRIBUTE FILTERS
+        </label>
+        <div className="grid grid-cols-2 gap-1.5 font-mono text-[11px]">
+          {/* Open Now */}
+          {setOpenNow && (
+            <button
+              onClick={() => setOpenNow(!openNow)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                openNow
+                  ? 'bg-[#10B981]/20 text-[#10B981] border-[#10B981]/40 shadow-[0_0_10px_rgba(16,185,129,0.25)]'
+                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Open Now</span>
+            </button>
+          )}
+
+          {/* 24/7 Access */}
+          {setIs24_7 && (
+            <button
+              onClick={() => setIs24_7(!is24_7)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                is24_7
+                  ? 'bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/40 shadow-[0_0_10px_rgba(239,68,68,0.25)]'
+                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>24/7 Service</span>
+            </button>
+          )}
+
+          {/* Has Phone */}
+          {setHasPhone && (
+            <button
+              onClick={() => setHasPhone(!hasPhone)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                hasPhone
+                  ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 shadow-[0_0_10px_rgba(0,240,255,0.25)]'
+                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span>Has Contact</span>
+            </button>
+          )}
+
+          {/* Near Transit */}
+          {setNearTransit && (
+            <button
+              onClick={() => setNearTransit(!nearTransit)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                nearTransit
+                  ? 'bg-[#14B8A6]/20 text-[#14B8A6] border-[#14B8A6]/40 shadow-[0_0_10px_rgba(20,184,166,0.25)]'
+                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              <Bus className="w-3.5 h-3.5" />
+              <span>Near Bus</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Category Pills with Antigravity Glow States */}
@@ -116,16 +349,33 @@ export default function FilterPanel({
         </div>
       </div>
 
-      {/* Radius Distance Slider with Neon Glowing Track */}
-      <div className="p-3 rounded-xl bg-[#07090E]/50 border border-white/5 space-y-2">
+      {/* Catchment Radius with Slider & Quick Preset Pills */}
+      <div className="p-3 rounded-xl bg-[#07090E]/50 border border-white/5 space-y-2.5">
         <div className="flex justify-between items-center text-xs">
           <span className="font-mono text-[11px] text-[#9CA3AF] flex items-center gap-1.5">
             <SlidersHorizontal className="w-3 h-3 text-[#00F0FF]" />
-            CATCHMENT RADIUS
+            RADIAL SEARCH RADIUS
           </span>
           <span className="font-mono font-bold text-xs text-[#00F0FF] bg-[#00F0FF]/10 px-2 py-0.5 rounded-md border border-[#00F0FF]/30 shadow-[0_0_8px_rgba(0,240,255,0.2)]">
             {radiusKm} km
           </span>
+        </div>
+
+        {/* Quick Radius Presets */}
+        <div className="grid grid-cols-5 gap-1 font-mono text-[10px]">
+          {RADIUS_PRESETS.map((km) => (
+            <button
+              key={km}
+              onClick={() => setRadiusKm(km)}
+              className={`py-1 rounded-lg border text-center transition-all cursor-pointer ${
+                radiusKm === km
+                  ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/50 font-bold shadow-[0_0_8px_rgba(0,240,255,0.25)]'
+                  : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              {km} km
+            </button>
+          ))}
         </div>
 
         <input
@@ -137,14 +387,9 @@ export default function FilterPanel({
           onChange={(e) => setRadiusKm(parseFloat(e.target.value))}
           className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#00F0FF]"
         />
-        <div className="flex justify-between text-[10px] font-mono text-[#4B5563]">
-          <span>1 km</span>
-          <span>25 km</span>
-          <span>50 km</span>
-        </div>
       </div>
 
-      {/* Rating Filter Slider */}
+      {/* Minimum Rating Filter */}
       <div className="p-3 rounded-xl bg-[#07090E]/50 border border-white/5 space-y-2">
         <div className="flex justify-between items-center text-xs">
           <span className="font-mono text-[11px] text-[#9CA3AF]">
@@ -165,6 +410,29 @@ export default function FilterPanel({
           className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#F59E0B]"
         />
       </div>
+
+      {/* Viewport Bounding Box Mode Toggle */}
+      {setViewportMode && (
+        <div className="p-3 rounded-xl bg-[#07090E]/50 border border-white/5 flex items-center justify-between font-mono text-xs">
+          <div className="flex items-center gap-2">
+            <Scan className="w-3.5 h-3.5 text-[#00F0FF]" />
+            <div>
+              <span className="text-slate-200 block text-[11px] font-semibold">VIEWPORT AUTO-FILTER</span>
+              <span className="text-[10px] text-slate-400">Sync venues to current map bounds</span>
+            </div>
+          </div>
+          <button
+            onClick={() => setViewportMode(!viewportMode)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
+              viewportMode 
+                ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 shadow-[0_0_8px_rgba(0,240,255,0.2)]'
+                : 'bg-white/5 text-slate-400 border-white/10'
+            }`}
+          >
+            {viewportMode ? 'ON' : 'OFF'}
+          </button>
+        </div>
+      )}
 
       {/* Bottom Command Bar */}
       <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">

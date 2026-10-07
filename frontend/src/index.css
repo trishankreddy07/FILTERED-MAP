@@ -235,3 +235,68 @@
 .marker-pulse {
   animation: radarSweep 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Heatmap Canvas Layer */
+.antigravity-heatmap-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 350;
+  mix-blend-mode: screen;
+  opacity: 0.85;
+  transition: opacity 0.3s ease;
+}
+
+/* Elastic Bottom Sheet & Split Drawer Animations */
+@keyframes slideUpSheet {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInSideDrawer {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-bottom-sheet {
+  animation: slideUpSheet 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-side-drawer {
+  animation: slideInSideDrawer 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Autocomplete Suggestion Dropdown */
+.autocomplete-dropdown {
+  background: rgba(11, 15, 25, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 20px rgba(0, 240, 255, 0.15);
+}
+
+/* Dynamic Marker Altitude & Stacking */
+.marker-priority-active {
+  z-index: 9999 !important;
+}
+
+.marker-priority-high {
+  z-index: 500 !important;
+}
+
+.marker-priority-normal {
+  z-index: 100 !important;
+}

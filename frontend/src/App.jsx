@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { 
   Globe2, 
@@ -18,7 +18,17 @@ import {
   Milestone,
   ArrowRight,
   Play,
-  Square
+  Square,
+  Bookmark,
+  Share2,
+  Phone,
+  Star,
+  Car,
+  Footprints,
+  Bike,
+  ShieldCheck,
+  Building,
+  Check
 } from 'lucide-react';
 
 import MapView from './components/MapView';
@@ -26,6 +36,21 @@ import FilterPanel from './components/FilterPanel';
 import PlaceCard from './components/PlaceCard';
 import AnalyticsModal from './components/AnalyticsModal';
 import { useGeolocation } from './hooks/useGeolocation';
+
+// Helper to compute haversine distance in km
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 export default function App() {
   const userGeo = useGeolocation();
@@ -36,18 +61,60 @@ export default function App() {
   const [radiusKm, setRadiusKm] = useState(25);
   const [minRating, setMinRating] = useState(0);
 
+  // Advanced Boolean Attribute Filters
+  const [openNow, setOpenNow] = useState(false);
+  const [is24_7, setIs24_7] = useState(false);
+  const [hasPhone, setHasPhone] = useState(false);
+  const [nearTransit, setNearTransit] = useState(false);
+  const [viewportMode, setViewportMode] = useState(false);
+  const [viewportBounds, setViewportBounds] = useState(null);
+
   // Data & Selection state
   const [places, setPlaces] = useState([]);
   const [selectedPlace, setSelectedPlace] = useState(null);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [systemHealth, setSystemHealth] = useState(null);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isLiveLoading, setIsLiveLoading] = useState(false);
   const [alertMessage, setAlertMessage] = useState(null);
 
-  // Navigation & Routing state
+  // Bookmarking System
+  const [bookmarkedIds, setBookmarkedIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('geopulse_bookmarks') || '[]');
+      return new Set(saved);
+    } catch {
+      return new Set();
+    }
+  });
+  const [showBookmarksOnly, setShowBookmarksOnly] = useState(false);
+
+  // Navigation & Multi-Modal Routing state
   const [activeRoute, setActiveRoute] = useState(null);
   const [routeLoading, setRouteLoading] = useState(false);
+  const [travelMode, setTravelMode] = useState('driving'); // 'driving' | 'walking' | 'cycling'
+
+  // Toggle Bookmark handler
+  const toggleBookmark = (place) => {
+    const updated = new Set(bookmarkedIds);
+    let msg = '';
+    if (updated.has(place.id)) {
+      updated.delete(place.id);
+      msg = `Removed "${place.name}" from saved bookmarks.`;
+    } else {
+      updated.add(place.id);
+      msg = `Saved "${place.name}" to bookmarks!`;
+    }
+    setBookmarkedIds(updated);
+    try {
+      localStorage.setItem('geopulse_bookmarks', JSON.stringify(Array.from(updated)));
+    } catch {
+      // ignore
+    }
+    setAlertMessage(msg);
+    setTimeout(() => setAlertMessage(null), 3000);
+  };
 
   // Fetch POIs
   const fetchPlaces = async () => {
@@ -60,11 +127,25 @@ export default function App() {
         min_rating: minRating,
         limit: 1000
       };
+
       if (selectedCategory !== 'All') {
         params.category = selectedCategory;
       }
       if (searchTerm.trim()) {
         params.search = searchTerm.trim();
+      }
+
+      // Boolean filters to backend
+      if (openNow) params.open_now = true;
+      if (is24_7) params.is_24_7 = true;
+      if (hasPhone) params.has_phone = true;
+
+      // Viewport Bounding Box auto-filter
+      if (viewportMode && viewportBounds) {
+        params.min_lat = viewportBounds.min_lat;
+        params.max_lat = viewportBounds.max_lat;
+        params.min_lng = viewportBounds.min_lng;
+        params.max_lng = viewportBounds.max_lng;
       }
 
       const res = await axios.get('/api/v1/places', { params });
@@ -75,6 +156,33 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  // Filtered places considering Near Transit & Bookmarks Filter
+  const displayedPlaces = useMemo(() => {
+    let result = places;
+
+    // Filter bookmarks only if toggled
+    if (showBookmarksOnly) {
+      result = result.filter(p => bookmarkedIds.has(p.id));
+    }
+
+    // Near Transit Intelligence: Venues within 1.5 km of a bus station/stop
+    if (nearTransit) {
+      const transitNodes = places.filter(p => 
+        p.category === 'Bus Stands' || 
+        p.amenity_type === 'bus_stop' || 
+        p.amenity_type === 'bus_station'
+      );
+      if (transitNodes.length > 0) {
+        result = result.filter(p => {
+          if (p.category === 'Bus Stands') return true;
+          return transitNodes.some(t => haversineKm(p.latitude, p.longitude, t.latitude, t.longitude) <= 1.5);
+        });
+      }
+    }
+
+    return result;
+  }, [places, showBookmarksOnly, bookmarkedIds, nearTransit]);
 
   // Fetch Health & Engine Status
   const fetchHealth = async () => {
@@ -105,11 +213,12 @@ export default function App() {
     }
   };
 
-  // Compute Driving Route via OSRM
-  const handleGetDirections = async (destinationPlace) => {
+  // Compute Multi-Modal Route via OSRM
+  const handleGetDirections = async (destinationPlace, mode = travelMode) => {
     setSelectedPlace(destinationPlace);
+    setIsDetailsOpen(false);
     setRouteLoading(true);
-    setAlertMessage(`Calculating fastest driving route to ${destinationPlace.name}...`);
+    setAlertMessage(`Calculating fastest ${mode} route to ${destinationPlace.name}...`);
 
     try {
       const res = await axios.get('/api/v1/analytics/route', {
@@ -117,7 +226,8 @@ export default function App() {
           start_lat: userGeo.latitude,
           start_lng: userGeo.longitude,
           end_lat: destinationPlace.latitude,
-          end_lng: destinationPlace.longitude
+          end_lng: destinationPlace.longitude,
+          mode: mode
         }
       });
 
@@ -127,17 +237,37 @@ export default function App() {
           coordinates: res.data.coordinates,
           distance_km: res.data.distance_km,
           duration_mins: res.data.duration_mins,
-          steps: res.data.steps || []
+          steps: res.data.steps || [],
+          mode: mode
         });
-        setAlertMessage(`Route ready: ${res.data.distance_km} km (~${res.data.duration_mins} mins)`);
+        setAlertMessage(`${mode.toUpperCase()} route ready: ${res.data.distance_km} km (~${res.data.duration_mins} mins)`);
         setTimeout(() => setAlertMessage(null), 4000);
       }
     } catch (err) {
       console.error('Failed to calculate route:', err);
-      setAlertMessage('Could not reach routing engine. Direct route drawn.');
+      setAlertMessage('Routing engine fallback applied.');
       setTimeout(() => setAlertMessage(null), 4000);
     } finally {
       setRouteLoading(false);
+    }
+  };
+
+  // Travel Mode Switcher
+  const handleTravelModeChange = (newMode) => {
+    setTravelMode(newMode);
+    if (activeRoute?.destination) {
+      handleGetDirections(activeRoute.destination, newMode);
+    }
+  };
+
+  // Autocomplete Suggestion Selection
+  const handleSelectSuggestion = (suggestion) => {
+    if (suggestion) {
+      setSelectedPlace(suggestion);
+      setIsDetailsOpen(true);
+      userGeo.setCustomLocation(suggestion.latitude, suggestion.longitude);
+      setAlertMessage(`Focused on "${suggestion.name}"`);
+      setTimeout(() => setAlertMessage(null), 3500);
     }
   };
 
@@ -166,7 +296,19 @@ export default function App() {
 
   useEffect(() => {
     fetchPlaces();
-  }, [userGeo.latitude, userGeo.longitude, selectedCategory, searchTerm, radiusKm, minRating]);
+  }, [
+    userGeo.latitude, 
+    userGeo.longitude, 
+    selectedCategory, 
+    searchTerm, 
+    radiusKm, 
+    minRating,
+    openNow,
+    is24_7,
+    hasPhone,
+    viewportMode,
+    viewportBounds
+  ]);
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#07090E] text-slate-100 font-sans selection:bg-[#00F0FF]/30 selection:text-white">
@@ -186,12 +328,25 @@ export default function App() {
                 SPATIAL ENGINE
               </span>
             </div>
-            <p className="text-[11px] text-slate-400">OpenStreetMap POI Indexer & Turn-by-Turn Driving Navigation</p>
+            <p className="text-[11px] text-slate-400">OpenStreetMap POI Indexer & Turn-by-Turn Navigation</p>
           </div>
         </div>
 
-        {/* Global Spatial Stats */}
-        <div className="hidden md:flex items-center gap-4 text-xs font-mono">
+        {/* Global Spatial Stats & Actions */}
+        <div className="hidden md:flex items-center gap-3 text-xs font-mono">
+          {/* Saved Bookmarks Toggle Chip */}
+          <button
+            onClick={() => setShowBookmarksOnly(!showBookmarksOnly)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all cursor-pointer font-semibold ${
+              showBookmarksOnly
+                ? 'bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/50 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                : 'antigravity-glass border-white/10 text-slate-300 hover:text-white'
+            }`}
+          >
+            <Bookmark className="w-3.5 h-3.5 fill-current" />
+            <span>SAVED ({bookmarkedIds.size})</span>
+          </button>
+
           <div className="flex items-center gap-2 antigravity-glass px-3 py-1.5 rounded-xl border border-white/10 shadow-sm">
             <span className="w-2 h-2 rounded-full bg-[#10B981] shadow-[0_0_8px_#10B981] animate-pulse"></span>
             <span className="text-slate-400">DB:</span>
@@ -201,7 +356,7 @@ export default function App() {
           <div className="flex items-center gap-2 antigravity-glass px-3 py-1.5 rounded-xl border border-white/10 shadow-sm">
             <Layers className="w-3.5 h-3.5 text-[#00F0FF]" />
             <span className="text-slate-400">VENUES:</span>
-            <span className="font-bold text-[#00F0FF]">{places.length}</span>
+            <span className="font-bold text-[#00F0FF]">{displayedPlaces.length}</span>
           </div>
 
           <button
@@ -223,7 +378,7 @@ export default function App() {
       )}
 
       {/* Main Workspace Layout */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         
         {/* Left Sidebar: Controls & Places List / Active Turn Directions */}
         <aside className="w-full md:w-[420px] lg:w-[460px] border-r border-white/10 bg-[#07090E]/95 backdrop-blur-md flex flex-col shrink-0 z-10 overflow-hidden">
@@ -253,12 +408,49 @@ export default function App() {
                   <p className="text-xs text-slate-400 line-clamp-1">{activeRoute.destination.address}</p>
                 </div>
 
+                {/* Multi-Modal Mode Switcher */}
+                <div className="flex items-center gap-1.5 font-mono text-xs pt-1">
+                  <button
+                    onClick={() => handleTravelModeChange('driving')}
+                    className={`flex-1 py-1.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
+                      travelMode === 'driving'
+                        ? 'bg-[#00F0FF] text-[#07090E] font-bold border-[#00F0FF]'
+                        : 'bg-white/5 text-slate-300 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    <Car className="w-3.5 h-3.5" />
+                    Drive
+                  </button>
+                  <button
+                    onClick={() => handleTravelModeChange('walking')}
+                    className={`flex-1 py-1.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
+                      travelMode === 'walking'
+                        ? 'bg-[#00F0FF] text-[#07090E] font-bold border-[#00F0FF]'
+                        : 'bg-white/5 text-slate-300 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    <Footprints className="w-3.5 h-3.5" />
+                    Walk
+                  </button>
+                  <button
+                    onClick={() => handleTravelModeChange('cycling')}
+                    className={`flex-1 py-1.5 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer border ${
+                      travelMode === 'cycling'
+                        ? 'bg-[#00F0FF] text-[#07090E] font-bold border-[#00F0FF]'
+                        : 'bg-white/5 text-slate-300 border-white/10 hover:text-white'
+                    }`}
+                  >
+                    <Bike className="w-3.5 h-3.5" />
+                    Transit
+                  </button>
+                </div>
+
                 {/* Duration & Distance Metric Badges */}
                 <div className="grid grid-cols-2 gap-2.5 pt-1">
                   <div className="p-2.5 rounded-xl antigravity-glass border border-[#00F0FF]/30 flex items-center gap-2.5 shadow-[0_0_12px_rgba(0,240,255,0.15)]">
                     <Clock className="w-4 h-4 text-[#00F0FF]" />
                     <div>
-                      <span className="text-[10px] font-mono text-slate-400 block uppercase">Est. Drive Time</span>
+                      <span className="text-[10px] font-mono text-slate-400 block uppercase">Est. Duration</span>
                       <strong className="text-sm font-mono text-[#00F0FF] font-bold">{activeRoute.duration_mins} mins</strong>
                     </div>
                   </div>
@@ -296,7 +488,7 @@ export default function App() {
                   </button>
 
                   <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${activeRoute.destination.latitude},${activeRoute.destination.longitude}&travelmode=driving`}
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${activeRoute.destination.latitude},${activeRoute.destination.longitude}&travelmode=${travelMode}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="py-2.5 px-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 border border-white/10 font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
@@ -343,10 +535,21 @@ export default function App() {
                   setRadiusKm={setRadiusKm}
                   minRating={minRating}
                   setMinRating={setMinRating}
+                  openNow={openNow}
+                  setOpenNow={setOpenNow}
+                  is24_7={is24_7}
+                  setIs24_7={setIs24_7}
+                  hasPhone={hasPhone}
+                  setHasPhone={setHasPhone}
+                  nearTransit={nearTransit}
+                  setNearTransit={setNearTransit}
+                  viewportMode={viewportMode}
+                  setViewportMode={setViewportMode}
                   onOpenAnalytics={() => setIsAnalyticsOpen(true)}
                   onResetLocation={() => userGeo.setCustomLocation(37.7749, -122.4194)}
                   isLiveLoading={isLiveLoading}
                   onFetchLiveOSM={handleFetchLiveOSM}
+                  onSelectSuggestion={handleSelectSuggestion}
                 />
               </div>
 
@@ -355,7 +558,7 @@ export default function App() {
                 <div className="px-5 py-3 border-b border-white/10 bg-[#07090E]/60 flex items-center justify-between text-xs text-slate-400 font-mono shrink-0">
                   <span className="flex items-center gap-1.5 font-medium text-slate-300">
                     <ListFilter className="w-3.5 h-3.5 text-[#00F0FF]" />
-                    INDEXED POIs ({places.length})
+                    INDEXED POIs ({displayedPlaces.length})
                   </span>
                   <span>CATCHMENT: <strong className="text-[#00F0FF]">{radiusKm} km</strong></span>
                 </div>
@@ -368,7 +571,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {!loading && places.length === 0 && (
+                  {!loading && displayedPlaces.length === 0 && (
                     <div className="text-center py-12 px-4 antigravity-glass rounded-2xl border border-white/10 my-4">
                       <AlertCircle className="w-8 h-8 text-slate-500 mx-auto mb-2" />
                       <p className="text-sm font-semibold text-slate-200">No POIs in this boundary</p>
@@ -382,13 +585,22 @@ export default function App() {
                     </div>
                   )}
 
-                  {!loading && places.map((place) => (
+                  {!loading && displayedPlaces.map((place) => (
                     <PlaceCard
                       key={place.id}
                       place={place}
                       isSelected={selectedPlace?.id === place.id}
                       isNavigatingTo={activeRoute?.destination?.id === place.id}
-                      onSelect={(p) => setSelectedPlace(p)}
+                      isBookmarked={bookmarkedIds.has(place.id)}
+                      onToggleBookmark={toggleBookmark}
+                      onToast={(msg) => {
+                        setAlertMessage(msg);
+                        setTimeout(() => setAlertMessage(null), 3000);
+                      }}
+                      onSelect={(p) => {
+                        setSelectedPlace(p);
+                        setIsDetailsOpen(true);
+                      }}
                       onGetDirections={(p) => handleGetDirections(p)}
                     />
                   ))}
@@ -401,14 +613,227 @@ export default function App() {
         {/* Right Area: Interactive Geospatial Map */}
         <main className="flex-1 relative bg-[#07090E] overflow-hidden">
           <MapView
-            places={places}
+            places={displayedPlaces}
             userLocation={{ latitude: userGeo.latitude, longitude: userGeo.longitude }}
             radiusKm={radiusKm}
+            setRadiusKm={setRadiusKm}
             selectedPlace={selectedPlace}
-            onSelectPlace={(p) => setSelectedPlace(p)}
+            onSelectPlace={(p) => {
+              setSelectedPlace(p);
+              setIsDetailsOpen(true);
+            }}
             onGetDirections={(p) => handleGetDirections(p)}
             activeRoute={activeRoute}
+            onClearRoute={handleClearRoute}
+            travelMode={travelMode}
+            onTravelModeChange={handleTravelModeChange}
+            viewportMode={viewportMode}
+            setViewportMode={setViewportMode}
+            onViewportChange={(bounds) => setViewportBounds(bounds)}
+            bookmarkedIds={bookmarkedIds}
+            onToggleBookmark={toggleBookmark}
+            onToast={(msg) => {
+              setAlertMessage(msg);
+              setTimeout(() => setAlertMessage(null), 3000);
+            }}
           />
+
+          {/* Desktop Collapsible Details Drawer (Side Overlay) */}
+          {selectedPlace && isDetailsOpen && (
+            <div className="hidden md:flex absolute top-4 right-4 bottom-4 w-96 antigravity-glass p-5 rounded-2xl border border-white/10 shadow-[0_16px_50px_rgba(0,0,0,0.85)] z-[450] backdrop-blur-2xl flex-col justify-between animate-side-drawer overflow-y-auto">
+              <div className="space-y-4">
+                {/* Header: Category Badge + Status + Actions */}
+                <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/30">
+                      {selectedPlace.category}
+                    </span>
+                    {selectedPlace.rating > 0 && (
+                      <span className="font-mono text-xs text-[#F59E0B] font-bold flex items-center gap-1">
+                        ★ {selectedPlace.rating}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => toggleBookmark(selectedPlace)}
+                      className={`p-1.5 rounded-xl border transition-all cursor-pointer ${
+                        bookmarkedIds.has(selectedPlace.id)
+                          ? 'bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/40'
+                          : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+                      }`}
+                      title="Bookmark place"
+                    >
+                      <Bookmark className="w-4 h-4 fill-current" />
+                    </button>
+                    <button
+                      onClick={() => setIsDetailsOpen(false)}
+                      className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer border border-transparent hover:border-white/10"
+                      title="Close drawer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Venue Name & Distance Telemetry */}
+                <div>
+                  <h3 className="text-xl font-extrabold text-white leading-tight mb-1">
+                    {selectedPlace.name}
+                  </h3>
+                  {selectedPlace.distance_km !== undefined && (
+                    <div className="font-mono text-xs text-[#00F0FF] flex items-center gap-1.5">
+                      <Navigation className="w-3.5 h-3.5 text-[#00F0FF]" />
+                      <span>{selectedPlace.distance_km} km from active GPS center</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Travel Time Chips */}
+                {selectedPlace.distance_km !== undefined && (
+                  <div className="grid grid-cols-2 gap-2 font-mono text-xs">
+                    <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2">
+                      <Car className="w-4 h-4 text-[#00F0FF]" />
+                      <div>
+                        <span className="text-[10px] text-slate-400 block uppercase">Drive</span>
+                        <strong className="text-slate-200">~{Math.max(1, Math.round(selectedPlace.distance_km * 1.5 + 2))} mins</strong>
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2">
+                      <Footprints className="w-4 h-4 text-[#10B981]" />
+                      <div>
+                        <span className="text-[10px] text-slate-400 block uppercase">Walk</span>
+                        <strong className="text-slate-200">~{Math.max(2, Math.round(selectedPlace.distance_km * 12))} mins</strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Spatial Metadata */}
+                <div className="space-y-2.5 text-xs text-slate-300 pt-2 border-t border-white/10">
+                  {selectedPlace.address && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-4 h-4 text-[#00F0FF] shrink-0 mt-0.5" />
+                      <span>{selectedPlace.address}</span>
+                    </div>
+                  )}
+
+                  {selectedPlace.raw_data?.phone && (
+                    <div className="flex items-center gap-2 font-mono text-[#10B981]">
+                      <Phone className="w-4 h-4 text-[#10B981] shrink-0" />
+                      <a href={`tel:${selectedPlace.raw_data.phone}`} className="hover:underline">
+                        {selectedPlace.raw_data.phone}
+                      </a>
+                    </div>
+                  )}
+
+                  {selectedPlace.raw_data?.opening_hours && (
+                    <div className="flex items-center gap-2 font-mono text-slate-400">
+                      <Clock className="w-4 h-4 text-slate-500 shrink-0" />
+                      <span>{selectedPlace.raw_data.opening_hours}</span>
+                    </div>
+                  )}
+
+                  {selectedPlace.amenity_type && (
+                    <div className="flex items-center gap-2 font-mono text-[11px] text-slate-400">
+                      <Building className="w-4 h-4 text-slate-500 shrink-0" />
+                      <span className="capitalize">OSM Amenity: {selectedPlace.amenity_type}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons: In-App Route & External Maps */}
+              <div className="pt-4 border-t border-white/10 space-y-2">
+                <button
+                  onClick={() => handleGetDirections(selectedPlace)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#00F0FF] hover:bg-[#00F0FF]/90 text-[#07090E] font-bold font-mono text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_20px_rgba(0,240,255,0.4)]"
+                >
+                  <Compass className="w-4 h-4" />
+                  Calculate In-App Route
+                </button>
+
+                <div className="grid grid-cols-3 gap-1.5 font-mono text-[11px]">
+                  <a
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.latitude},${selectedPlace.longitude}&travelmode=driving`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 border border-white/10 text-center flex items-center justify-center gap-1 transition-all"
+                  >
+                    Google
+                  </a>
+                  <a
+                    href={`https://maps.apple.com/?daddr=${selectedPlace.latitude},${selectedPlace.longitude}&dirflg=d`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 rounded-xl bg-white/5 hover:bg-white/15 text-slate-200 border border-white/10 text-center flex items-center justify-center gap-1 transition-all"
+                  >
+                    Apple
+                  </a>
+                  <a
+                    href={`https://waze.com/ul?ll=${selectedPlace.latitude},${selectedPlace.longitude}&navigate=yes`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 rounded-xl bg-[#00F0FF]/10 hover:bg-[#00F0FF]/20 text-[#00F0FF] border border-[#00F0FF]/30 text-center flex items-center justify-center gap-1 transition-all"
+                  >
+                    Waze
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Mobile Elastic Bottom Sheet Drawer */}
+          {selectedPlace && isDetailsOpen && (
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-[600] antigravity-glass p-5 rounded-t-3xl border-t border-white/15 shadow-[0_-12px_40px_rgba(0,0,0,0.9)] backdrop-blur-2xl animate-bottom-sheet max-h-[80vh] overflow-y-auto">
+              <div className="w-12 h-1.5 rounded-full bg-white/20 mx-auto mb-3"></div>
+              
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="font-mono text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/30">
+                  {selectedPlace.category}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleBookmark(selectedPlace)}
+                    className="p-1.5 rounded-xl bg-white/5 text-[#F59E0B]"
+                  >
+                    <Bookmark className="w-4 h-4 fill-current" />
+                  </button>
+                  <button
+                    onClick={() => setIsDetailsOpen(false)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <h3 className="text-lg font-bold text-white mb-1">{selectedPlace.name}</h3>
+              {selectedPlace.address && (
+                <p className="text-xs text-slate-400 mb-3">{selectedPlace.address}</p>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  onClick={() => handleGetDirections(selectedPlace)}
+                  className="py-2.5 rounded-xl bg-[#00F0FF] text-[#07090E] font-bold font-mono text-xs flex items-center justify-center gap-1.5"
+                >
+                  <Compass className="w-4 h-4" />
+                  Route Here
+                </button>
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.latitude},${selectedPlace.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-2.5 rounded-xl bg-white/10 text-white font-mono text-xs flex items-center justify-center gap-1.5 border border-white/10"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-[#00F0FF]" />
+                  Google Maps
+                </a>
+              </div>
+            </div>
+          )}
         </main>
       </div>
 
@@ -417,7 +842,7 @@ export default function App() {
         isOpen={isAnalyticsOpen}
         onClose={() => setIsAnalyticsOpen(false)}
         userLocation={{ latitude: userGeo.latitude, longitude: userGeo.longitude }}
-        activePlaces={places}
+        activePlaces={displayedPlaces}
       />
     </div>
   );
