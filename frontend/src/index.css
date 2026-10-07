@@ -93,16 +93,26 @@
 /* ========================================================
    LEAFLET ANTIGRAVITY DARK MAP CUSTOMIZATIONS
    ======================================================== */
+#map,
 .leaflet-container {
-  width: 100%;
-  height: 100%;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100vh;
+  position: relative !important;
   background-color: #07090E !important;
   font-family: inherit;
+  z-index: 1;
 }
 
-/* High-contrast Antigravity Dark Map Filter on OpenStreetMap Tiles */
-.antigravity-tiles .leaflet-tile {
-  filter: brightness(0.6) invert(1) contrast(3.4) hue-rotate(200deg) saturate(0.28) brightness(0.78);
+/* CartoDB Dark Matter Crisp Native Dark Layer */
+.carto-dark-tiles .leaflet-tile {
+  filter: contrast(1.06) brightness(0.98);
+  transition: opacity 0.2s ease-in;
+}
+
+/* Optional Cyber Glow Tint */
+.carto-cyber-tiles .leaflet-tile {
+  filter: contrast(1.15) brightness(0.95) saturate(1.1);
   transition: opacity 0.2s ease-in;
 }
 

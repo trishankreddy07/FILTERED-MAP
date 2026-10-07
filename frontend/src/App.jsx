@@ -6,6 +6,7 @@ import {
   MapPin, 
   Compass, 
   ListFilter, 
+  SlidersHorizontal,
   Database,
   BarChart3,
   Search,
@@ -26,9 +27,11 @@ import {
   Car,
   Footprints,
   Bike,
-  ShieldCheck,
   Building,
-  Check
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Target
 } from 'lucide-react';
 
 import MapView from './components/MapView';
@@ -55,6 +58,10 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 export default function App() {
   const userGeo = useGeolocation();
   
+  // Sidebar State (Tabs & Collapse)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState('results'); // 'filters' | 'spatial' | 'results'
+
   // Spatial filtering state
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -161,12 +168,10 @@ export default function App() {
   const displayedPlaces = useMemo(() => {
     let result = places;
 
-    // Filter bookmarks only if toggled
     if (showBookmarksOnly) {
       result = result.filter(p => bookmarkedIds.has(p.id));
     }
 
-    // Near Transit Intelligence: Venues within 1.5 km of a bus station/stop
     if (nearTransit) {
       const transitNodes = places.filter(p => 
         p.category === 'Bus Stands' || 
@@ -336,7 +341,11 @@ export default function App() {
         <div className="hidden md:flex items-center gap-3 text-xs font-mono">
           {/* Saved Bookmarks Toggle Chip */}
           <button
-            onClick={() => setShowBookmarksOnly(!showBookmarksOnly)}
+            onClick={() => {
+              setShowBookmarksOnly(!showBookmarksOnly);
+              setSidebarTab('results');
+              if (sidebarCollapsed) setSidebarCollapsed(false);
+            }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all cursor-pointer font-semibold ${
               showBookmarksOnly
                 ? 'bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/50 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
@@ -380,14 +389,17 @@ export default function App() {
       {/* Main Workspace Layout */}
       <div className="flex flex-1 overflow-hidden relative">
         
-        {/* Left Sidebar: Controls & Places List / Active Turn Directions */}
-        <aside className="w-full md:w-[420px] lg:w-[460px] border-r border-white/10 bg-[#07090E]/95 backdrop-blur-md flex flex-col shrink-0 z-10 overflow-hidden">
-          
-          {/* If an active route is calculated, show the Flight-Deck Navigation Directions Panel */}
+        {/* Left Sidebar: Modular Tabbed Navigation or Compact Rail */}
+        <aside 
+          className={`border-r border-white/10 bg-[#07090E]/95 backdrop-blur-md flex flex-col shrink-0 z-10 overflow-hidden transition-all duration-300 ${
+            sidebarCollapsed 
+              ? 'w-16 items-center' 
+              : 'w-full md:w-[420px] lg:w-[460px]'
+          }`}
+        >
+          {/* Active Turn-by-Turn Navigation Route Deck */}
           {activeRoute ? (
-            <div className="flex flex-col h-full overflow-hidden bg-[#07090E]/95">
-              
-              {/* Active Route Flight-Deck Header */}
+            <div className="flex flex-col h-full w-full overflow-hidden bg-[#07090E]/95">
               <div className="p-5 border-b border-white/10 bg-gradient-to-br from-[#00F0FF]/10 via-[#0B132B]/80 to-[#A855F7]/10 flex flex-col gap-3 shrink-0 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-[#00F0FF] font-mono font-bold text-xs uppercase tracking-wider">
@@ -408,7 +420,7 @@ export default function App() {
                   <p className="text-xs text-slate-400 line-clamp-1">{activeRoute.destination.address}</p>
                 </div>
 
-                {/* Multi-Modal Mode Switcher */}
+                {/* Mode Selector */}
                 <div className="flex items-center gap-1.5 font-mono text-xs pt-1">
                   <button
                     onClick={() => handleTravelModeChange('driving')}
@@ -445,7 +457,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Duration & Distance Metric Badges */}
+                {/* Duration & Distance Badges */}
                 <div className="grid grid-cols-2 gap-2.5 pt-1">
                   <div className="p-2.5 rounded-xl antigravity-glass border border-[#00F0FF]/30 flex items-center gap-2.5 shadow-[0_0_12px_rgba(0,240,255,0.15)]">
                     <Clock className="w-4 h-4 text-[#00F0FF]" />
@@ -464,7 +476,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Journey Controls: Start Live GPS Journey & Google Maps Launcher */}
+                {/* Journey Controls */}
                 <div className="flex items-center gap-2 pt-1 font-mono">
                   <button
                     onClick={handleToggleJourney}
@@ -499,12 +511,11 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Turn-by-Turn Steps List */}
+              {/* Turn-by-Turn Steps */}
               <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
                 <span className="font-mono text-[10px] font-bold uppercase text-slate-400 tracking-wider block mb-1">
                   Turn Directives ({activeRoute.steps.length} Steps)
                 </span>
-
                 {activeRoute.steps.map((step, idx) => (
                   <div key={idx} className="p-3 rounded-xl antigravity-glass border border-white/10 flex items-start gap-3 hover:border-[#00F0FF]/30 transition-all">
                     <div className="w-6 h-6 rounded-full bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/30 flex items-center justify-center shrink-0 mt-0.5 text-xs font-mono font-bold shadow-[0_0_6px_rgba(0,240,255,0.3)]">
@@ -522,96 +533,296 @@ export default function App() {
                 ))}
               </div>
             </div>
+          ) : sidebarCollapsed ? (
+            /* COLLAPSED RAIL VIEW */
+            <div className="flex flex-col items-center py-4 w-full h-full gap-5">
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="p-2.5 rounded-xl bg-white/5 hover:bg-[#00F0FF]/20 text-[#00F0FF] border border-white/10 transition-all cursor-pointer shadow-[0_0_12px_rgba(0,240,255,0.2)]"
+                title="Expand Sidebar"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              <div className="h-px w-8 bg-white/10"></div>
+
+              {/* Rail Tab Selectors */}
+              <button
+                onClick={() => {
+                  setSidebarTab('filters');
+                  setSidebarCollapsed(false);
+                }}
+                className={`p-2.5 rounded-xl transition-all cursor-pointer border ${
+                  sidebarTab === 'filters'
+                    ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/50 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+                }`}
+                title="Filters & Categories"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => {
+                  setSidebarTab('spatial');
+                  setSidebarCollapsed(false);
+                }}
+                className={`p-2.5 rounded-xl transition-all cursor-pointer border ${
+                  sidebarTab === 'spatial'
+                    ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/50 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+                }`}
+                title="Spatial Control"
+              >
+                <Compass className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={() => {
+                  setSidebarTab('results');
+                  setSidebarCollapsed(false);
+                }}
+                className={`p-2.5 rounded-xl transition-all cursor-pointer border relative ${
+                  sidebarTab === 'results'
+                    ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/50 shadow-[0_0_12px_rgba(0,240,255,0.3)]'
+                    : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+                }`}
+                title={`Results (${displayedPlaces.length})`}
+              >
+                <ListFilter className="w-4 h-4" />
+                {displayedPlaces.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#00F0FF] text-[#07090E] font-mono text-[9px] font-bold flex items-center justify-center">
+                    {displayedPlaces.length > 99 ? '99+' : displayedPlaces.length}
+                  </span>
+                )}
+              </button>
+            </div>
           ) : (
-            /* Default Exploration Mode */
+            /* FULL MODULAR TABBED SIDEBAR */
             <>
-              <div className="p-4 border-b border-white/10 shrink-0">
-                <FilterPanel
-                  searchTerm={searchTerm}
-                  setSearchTerm={setSearchTerm}
-                  selectedCategory={selectedCategory}
-                  setSelectedCategory={setSelectedCategory}
-                  radiusKm={radiusKm}
-                  setRadiusKm={setRadiusKm}
-                  minRating={minRating}
-                  setMinRating={setMinRating}
-                  openNow={openNow}
-                  setOpenNow={setOpenNow}
-                  is24_7={is24_7}
-                  setIs24_7={setIs24_7}
-                  hasPhone={hasPhone}
-                  setHasPhone={setHasPhone}
-                  nearTransit={nearTransit}
-                  setNearTransit={setNearTransit}
-                  viewportMode={viewportMode}
-                  setViewportMode={setViewportMode}
-                  onOpenAnalytics={() => setIsAnalyticsOpen(true)}
-                  onResetLocation={() => userGeo.setCustomLocation(37.7749, -122.4194)}
-                  isLiveLoading={isLiveLoading}
-                  onFetchLiveOSM={handleFetchLiveOSM}
-                  onSelectSuggestion={handleSelectSuggestion}
-                />
+              {/* Sidebar Header Bar with Branding & Collapse Button */}
+              <div className="p-4 border-b border-white/10 bg-[#07090E]/80 shrink-0 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#10B981] shadow-[0_0_8px_#10B981] animate-pulse"></span>
+                  <span className="font-mono text-xs font-bold text-slate-200">
+                    RADAR DECK
+                  </span>
+                  <span className="text-[10px] font-mono text-[#00F0FF] bg-[#00F0FF]/10 px-2 py-0.5 rounded-full border border-[#00F0FF]/25">
+                    {displayedPlaces.length} POIs
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setSidebarCollapsed(true)}
+                    className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all cursor-pointer border border-transparent hover:border-white/10"
+                    title="Collapse Sidebar"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
-              {/* Results Summary & List */}
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="px-5 py-3 border-b border-white/10 bg-[#07090E]/60 flex items-center justify-between text-xs text-slate-400 font-mono shrink-0">
-                  <span className="flex items-center gap-1.5 font-medium text-slate-300">
-                    <ListFilter className="w-3.5 h-3.5 text-[#00F0FF]" />
-                    INDEXED POIs ({displayedPlaces.length})
-                  </span>
-                  <span>CATCHMENT: <strong className="text-[#00F0FF]">{radiusKm} km</strong></span>
+              {/* Glowing Modular Tab Navigation Bar */}
+              <div className="px-4 py-2.5 border-b border-white/10 bg-[#0B0F19]/60 shrink-0">
+                <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-[#07090E]/90 border border-white/10 font-mono text-xs">
+                  {/* Tab 1: Filters & Categories */}
+                  <button
+                    onClick={() => setSidebarTab('filters')}
+                    className={`py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      sidebarTab === 'filters'
+                        ? 'bg-[#00F0FF] text-[#07090E] shadow-[0_0_14px_rgba(0,240,255,0.4)]'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span className="truncate">Filters</span>
+                  </button>
+
+                  {/* Tab 2: Spatial Control */}
+                  <button
+                    onClick={() => setSidebarTab('spatial')}
+                    className={`py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      sidebarTab === 'spatial'
+                        ? 'bg-[#00F0FF] text-[#07090E] shadow-[0_0_14px_rgba(0,240,255,0.4)]'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span className="truncate">Spatial</span>
+                  </button>
+
+                  {/* Tab 3: Results List */}
+                  <button
+                    onClick={() => setSidebarTab('results')}
+                    className={`py-2 px-1 rounded-lg font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                      sidebarTab === 'results'
+                        ? 'bg-[#00F0FF] text-[#07090E] shadow-[0_0_14px_rgba(0,240,255,0.4)]'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <ListFilter className="w-3.5 h-3.5" />
+                    <span className="truncate">Results ({displayedPlaces.length})</span>
+                  </button>
                 </div>
+              </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {loading && (
-                    <div className="flex flex-col items-center justify-center py-12 text-slate-500 text-xs font-mono gap-2.5">
-                      <span className="w-5 h-5 border-2 border-[#00F0FF] border-t-transparent rounded-full animate-spin"></span>
-                      SCANNING SPATIAL REGISTRY...
-                    </div>
-                  )}
+              {/* Dynamic Tab Body Panel */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* TAB 1: FILTERS & CATEGORIES */}
+                {sidebarTab === 'filters' && (
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <FilterPanel
+                      searchTerm={searchTerm}
+                      setSearchTerm={setSearchTerm}
+                      selectedCategory={selectedCategory}
+                      setSelectedCategory={setSelectedCategory}
+                      radiusKm={radiusKm}
+                      setRadiusKm={setRadiusKm}
+                      minRating={minRating}
+                      setMinRating={setMinRating}
+                      openNow={openNow}
+                      setOpenNow={setOpenNow}
+                      is24_7={is24_7}
+                      setIs24_7={setIs24_7}
+                      hasPhone={hasPhone}
+                      setHasPhone={setHasPhone}
+                      nearTransit={nearTransit}
+                      setNearTransit={setNearTransit}
+                      viewportMode={viewportMode}
+                      setViewportMode={setViewportMode}
+                      onOpenAnalytics={() => setIsAnalyticsOpen(true)}
+                      onResetLocation={() => userGeo.setCustomLocation(37.7749, -122.4194)}
+                      isLiveLoading={isLiveLoading}
+                      onFetchLiveOSM={handleFetchLiveOSM}
+                      onSelectSuggestion={handleSelectSuggestion}
+                      activeTab="filters"
+                      onViewResults={() => setSidebarTab('results')}
+                      totalResultsCount={displayedPlaces.length}
+                    />
+                  </div>
+                )}
 
-                  {!loading && displayedPlaces.length === 0 && (
-                    <div className="text-center py-12 px-4 antigravity-glass rounded-2xl border border-white/10 my-4">
-                      <AlertCircle className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-slate-200">No POIs in this boundary</p>
-                      <p className="text-xs text-slate-400 mt-1 mb-3">Click 'Sync Local POIs' to query OpenStreetMap live for this region.</p>
+                {/* TAB 2: SPATIAL CONTROL */}
+                {sidebarTab === 'spatial' && (
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <FilterPanel
+                      searchTerm={searchTerm}
+                      setSearchTerm={setSearchTerm}
+                      selectedCategory={selectedCategory}
+                      setSelectedCategory={setSelectedCategory}
+                      radiusKm={radiusKm}
+                      setRadiusKm={setRadiusKm}
+                      minRating={minRating}
+                      setMinRating={setMinRating}
+                      openNow={openNow}
+                      setOpenNow={setOpenNow}
+                      is24_7={is24_7}
+                      setIs24_7={setIs24_7}
+                      hasPhone={hasPhone}
+                      setHasPhone={setHasPhone}
+                      nearTransit={nearTransit}
+                      setNearTransit={setNearTransit}
+                      viewportMode={viewportMode}
+                      setViewportMode={setViewportMode}
+                      onOpenAnalytics={() => setIsAnalyticsOpen(true)}
+                      onResetLocation={() => userGeo.setCustomLocation(37.7749, -122.4194)}
+                      isLiveLoading={isLiveLoading}
+                      onFetchLiveOSM={handleFetchLiveOSM}
+                      onSelectSuggestion={handleSelectSuggestion}
+                      activeTab="spatial"
+                      onViewResults={() => setSidebarTab('results')}
+                      totalResultsCount={displayedPlaces.length}
+                    />
+                  </div>
+                )}
+
+                {/* TAB 3: RESULTS LIST */}
+                {sidebarTab === 'results' && (
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                    {/* Results Meta Info Bar */}
+                    <div className="px-4 py-2.5 border-b border-white/10 bg-[#07090E]/60 flex items-center justify-between text-xs text-slate-400 font-mono shrink-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-semibold">
+                          {selectedCategory === 'All' ? 'All Places' : selectedCategory}
+                        </span>
+                        <span className="text-[10px] text-[#00F0FF] bg-[#00F0FF]/10 px-2 py-0.5 rounded-md border border-[#00F0FF]/20">
+                          {radiusKm} km
+                        </span>
+                      </div>
+
+                      {/* Saved Bookmarks Quick Toggle */}
                       <button
-                        onClick={handleFetchLiveOSM}
-                        className="px-4 py-2 rounded-xl bg-[#00F0FF] hover:bg-[#00F0FF]/90 text-[#07090E] font-mono font-bold text-xs cursor-pointer transition-all shadow-[0_0_15px_rgba(0,240,255,0.4)]"
+                        onClick={() => setShowBookmarksOnly(!showBookmarksOnly)}
+                        className={`px-2 py-0.5 rounded-lg border text-[10px] flex items-center gap-1 transition-all cursor-pointer ${
+                          showBookmarksOnly
+                            ? 'bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/50'
+                            : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+                        }`}
                       >
-                        Sync OpenStreetMap Now
+                        <Bookmark className="w-3 h-3 fill-current" />
+                        <span>Saved ({bookmarkedIds.size})</span>
                       </button>
                     </div>
-                  )}
 
-                  {!loading && displayedPlaces.map((place) => (
-                    <PlaceCard
-                      key={place.id}
-                      place={place}
-                      isSelected={selectedPlace?.id === place.id}
-                      isNavigatingTo={activeRoute?.destination?.id === place.id}
-                      isBookmarked={bookmarkedIds.has(place.id)}
-                      onToggleBookmark={toggleBookmark}
-                      onToast={(msg) => {
-                        setAlertMessage(msg);
-                        setTimeout(() => setAlertMessage(null), 3000);
-                      }}
-                      onSelect={(p) => {
-                        setSelectedPlace(p);
-                        setIsDetailsOpen(true);
-                      }}
-                      onGetDirections={(p) => handleGetDirections(p)}
-                    />
-                  ))}
-                </div>
+                    {/* Results Scrollable List */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {loading && (
+                        <div className="flex flex-col items-center justify-center py-12 text-slate-500 text-xs font-mono gap-2.5">
+                          <span className="w-5 h-5 border-2 border-[#00F0FF] border-t-transparent rounded-full animate-spin"></span>
+                          SCANNING SPATIAL REGISTRY...
+                        </div>
+                      )}
+
+                      {!loading && displayedPlaces.length === 0 && (
+                        <div className="text-center py-12 px-4 antigravity-glass rounded-2xl border border-white/10 my-4">
+                          <AlertCircle className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+                          <p className="text-sm font-semibold text-slate-200">No POIs in this boundary</p>
+                          <p className="text-xs text-slate-400 mt-1 mb-3">
+                            {showBookmarksOnly 
+                              ? "You haven't bookmarked any venues yet. Tap the bookmark star on any place to save it!"
+                              : "Click 'Sync Local POIs' to query OpenStreetMap live for this region."}
+                          </p>
+                          {!showBookmarksOnly && (
+                            <button
+                              onClick={handleFetchLiveOSM}
+                              className="px-4 py-2 rounded-xl bg-[#00F0FF] hover:bg-[#00F0FF]/90 text-[#07090E] font-mono font-bold text-xs cursor-pointer transition-all shadow-[0_0_15px_rgba(0,240,255,0.4)]"
+                            >
+                              Sync OpenStreetMap Now
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {!loading && displayedPlaces.map((place) => (
+                        <PlaceCard
+                          key={place.id}
+                          place={place}
+                          isSelected={selectedPlace?.id === place.id}
+                          isNavigatingTo={activeRoute?.destination?.id === place.id}
+                          isBookmarked={bookmarkedIds.has(place.id)}
+                          onToggleBookmark={toggleBookmark}
+                          onToast={(msg) => {
+                            setAlertMessage(msg);
+                            setTimeout(() => setAlertMessage(null), 3000);
+                          }}
+                          onSelect={(p) => {
+                            setSelectedPlace(p);
+                            setIsDetailsOpen(true);
+                          }}
+                          onGetDirections={(p) => handleGetDirections(p)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
         </aside>
 
         {/* Right Area: Interactive Geospatial Map */}
-        <main className="flex-1 relative bg-[#07090E] overflow-hidden">
+        <main className="flex-1 relative w-full h-full bg-[#07090E] overflow-hidden" id="map-container">
           <MapView
             places={displayedPlaces}
             userLocation={{ latitude: userGeo.latitude, longitude: userGeo.longitude }}
@@ -632,6 +843,7 @@ export default function App() {
             onViewportChange={(bounds) => setViewportBounds(bounds)}
             bookmarkedIds={bookmarkedIds}
             onToggleBookmark={toggleBookmark}
+            sidebarCollapsed={sidebarCollapsed}
             onToast={(msg) => {
               setAlertMessage(msg);
               setTimeout(() => setAlertMessage(null), 3000);

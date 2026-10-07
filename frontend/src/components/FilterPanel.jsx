@@ -23,7 +23,8 @@ import {
   History,
   X,
   Scan,
-  Check
+  Check,
+  ArrowRight
 } from 'lucide-react';
 
 const CATEGORIES = [
@@ -63,7 +64,10 @@ export default function FilterPanel({
   onResetLocation,
   isLiveLoading,
   onFetchLiveOSM,
-  onSelectSuggestion
+  onSelectSuggestion,
+  activeTab = 'filters', // 'filters' | 'spatial' | 'all'
+  onViewResults,
+  totalResultsCount = 0
 }) {
   // Autocomplete State
   const [suggestions, setSuggestions] = useState([]);
@@ -135,35 +139,14 @@ export default function FilterPanel({
     }
   };
 
-  return (
-    <div className="flex flex-col gap-4 p-5 rounded-2xl bg-[#0B0F19]/80 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
-      
-      {/* Header & Spatial Telemetry */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-[#00F0FF]/10 border border-[#00F0FF]/30 flex items-center justify-center text-[#00F0FF] shadow-[0_0_12px_rgba(0,240,255,0.25)]">
-            <Compass className="w-4 h-4 animate-spin-slow" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-[#F3F4F6] tracking-tight flex items-center gap-2">
-              SPATIAL RADAR
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00F0FF] shadow-[0_0_8px_#00F0FF] animate-pulse"></span>
-            </h2>
-            <p className="text-[11px] font-mono text-[#9CA3AF]">v3.0 INTELLIGENCE ENGINE</p>
-          </div>
-        </div>
-
-        <button
-          onClick={onOpenAnalytics}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-gradient-to-r from-[#00F0FF]/20 via-[#A855F7]/20 to-[#3B82F6]/20 hover:from-[#00F0FF]/30 hover:to-[#A855F7]/30 text-[#00F0FF] border border-[#00F0FF]/40 shadow-[0_0_15px_rgba(0,240,255,0.2)] hover:shadow-[0_0_20px_rgba(0,240,255,0.35)] transition-all cursor-pointer font-mono"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-[#00F0FF]" />
-          Analytics
-        </button>
-      </div>
-
+  // TAB 1: FILTERS & CATEGORIES
+  const renderFiltersTab = () => (
+    <div className="space-y-4">
       {/* Search-as-you-type Geo-Autocomplete Input */}
       <div ref={searchContainerRef} className="relative z-30">
+        <label className="text-[11px] font-mono uppercase tracking-wider text-[#9CA3AF] block mb-1.5 font-bold">
+          POI SEARCH & DISCOVERY
+        </label>
         <div className="relative">
           <Search className="w-4 h-4 text-[#9CA3AF] absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors group-focus-within:text-[#00F0FF]" />
           <input
@@ -247,78 +230,10 @@ export default function FilterPanel({
         )}
       </div>
 
-      {/* Smart Multi-Attribute Boolean Filters */}
-      <div className="space-y-1.5">
-        <label className="text-[11px] font-mono uppercase tracking-wider text-[#9CA3AF] block">
-          SMART ATTRIBUTE FILTERS
-        </label>
-        <div className="grid grid-cols-2 gap-1.5 font-mono text-[11px]">
-          {/* Open Now */}
-          {setOpenNow && (
-            <button
-              onClick={() => setOpenNow(!openNow)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                openNow
-                  ? 'bg-[#10B981]/20 text-[#10B981] border-[#10B981]/40 shadow-[0_0_10px_rgba(16,185,129,0.25)]'
-                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>Open Now</span>
-            </button>
-          )}
-
-          {/* 24/7 Access */}
-          {setIs24_7 && (
-            <button
-              onClick={() => setIs24_7(!is24_7)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                is24_7
-                  ? 'bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/40 shadow-[0_0_10px_rgba(239,68,68,0.25)]'
-                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
-              }`}
-            >
-              <ShieldAlert className="w-3.5 h-3.5" />
-              <span>24/7 Service</span>
-            </button>
-          )}
-
-          {/* Has Phone */}
-          {setHasPhone && (
-            <button
-              onClick={() => setHasPhone(!hasPhone)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                hasPhone
-                  ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 shadow-[0_0_10px_rgba(0,240,255,0.25)]'
-                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
-              }`}
-            >
-              <Phone className="w-3.5 h-3.5" />
-              <span>Has Contact</span>
-            </button>
-          )}
-
-          {/* Near Transit */}
-          {setNearTransit && (
-            <button
-              onClick={() => setNearTransit(!nearTransit)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                nearTransit
-                  ? 'bg-[#14B8A6]/20 text-[#14B8A6] border-[#14B8A6]/40 shadow-[0_0_10px_rgba(20,184,166,0.25)]'
-                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
-              }`}
-            >
-              <Bus className="w-3.5 h-3.5" />
-              <span>Near Bus</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Category Pills with Antigravity Glow States */}
+      {/* Category Grid with Antigravity Glow States */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-[11px] font-mono uppercase tracking-wider text-[#9CA3AF]">
+          <label className="text-[11px] font-mono uppercase tracking-wider text-[#9CA3AF] font-bold">
             VENUE CATEGORIES
           </label>
           <span className="text-[10px] font-mono text-[#00F0FF] bg-[#00F0FF]/10 px-2 py-0.5 rounded-full border border-[#00F0FF]/20">
@@ -349,11 +264,95 @@ export default function FilterPanel({
         </div>
       </div>
 
+      {/* Smart Multi-Attribute Boolean Filters */}
+      <div className="space-y-1.5 pt-1">
+        <label className="text-[11px] font-mono uppercase tracking-wider text-[#9CA3AF] block font-bold">
+          SMART ATTRIBUTE FILTERS
+        </label>
+        <div className="grid grid-cols-2 gap-1.5 font-mono text-[11px]">
+          {/* Open Now */}
+          {setOpenNow && (
+            <button
+              onClick={() => setOpenNow(!openNow)}
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border transition-all cursor-pointer ${
+                openNow
+                  ? 'bg-[#10B981]/20 text-[#10B981] border-[#10B981]/40 shadow-[0_0_10px_rgba(16,185,129,0.25)]'
+                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 text-[#10B981]" />
+              <span>Open Now</span>
+            </button>
+          )}
+
+          {/* 24/7 Access */}
+          {setIs24_7 && (
+            <button
+              onClick={() => setIs24_7(!is24_7)}
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border transition-all cursor-pointer ${
+                is24_7
+                  ? 'bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/40 shadow-[0_0_10px_rgba(239,68,68,0.25)]'
+                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-[#EF4444]" />
+              <span>24/7 Service</span>
+            </button>
+          )}
+
+          {/* Has Phone */}
+          {setHasPhone && (
+            <button
+              onClick={() => setHasPhone(!hasPhone)}
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border transition-all cursor-pointer ${
+                hasPhone
+                  ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 shadow-[0_0_10px_rgba(0,240,255,0.25)]'
+                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              <Phone className="w-3.5 h-3.5 text-[#00F0FF]" />
+              <span>Has Contact</span>
+            </button>
+          )}
+
+          {/* Near Transit */}
+          {setNearTransit && (
+            <button
+              onClick={() => setNearTransit(!nearTransit)}
+              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl border transition-all cursor-pointer ${
+                nearTransit
+                  ? 'bg-[#14B8A6]/20 text-[#14B8A6] border-[#14B8A6]/40 shadow-[0_0_10px_rgba(20,184,166,0.25)]'
+                  : 'bg-[#07090E]/60 text-slate-400 border-white/10 hover:text-white'
+              }`}
+            >
+              <Bus className="w-3.5 h-3.5 text-[#14B8A6]" />
+              <span>Near Bus</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Switch to Results Button */}
+      {onViewResults && (
+        <button
+          onClick={onViewResults}
+          className="w-full mt-3 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#00F0FF]/15 to-[#A855F7]/15 hover:from-[#00F0FF]/25 hover:to-[#A855F7]/25 text-[#00F0FF] border border-[#00F0FF]/30 font-mono text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(0,240,255,0.15)]"
+        >
+          <span>View {totalResultsCount} Matching Venues</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+
+  // TAB 2: SPATIAL CONTROL
+  const renderSpatialTab = () => (
+    <div className="space-y-4">
       {/* Catchment Radius with Slider & Quick Preset Pills */}
-      <div className="p-3 rounded-xl bg-[#07090E]/50 border border-white/5 space-y-2.5">
+      <div className="p-3.5 rounded-xl bg-[#07090E]/70 border border-white/10 space-y-2.5">
         <div className="flex justify-between items-center text-xs">
-          <span className="font-mono text-[11px] text-[#9CA3AF] flex items-center gap-1.5">
-            <SlidersHorizontal className="w-3 h-3 text-[#00F0FF]" />
+          <span className="font-mono text-[11px] text-[#9CA3AF] flex items-center gap-1.5 font-bold">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[#00F0FF]" />
             RADIAL SEARCH RADIUS
           </span>
           <span className="font-mono font-bold text-xs text-[#00F0FF] bg-[#00F0FF]/10 px-2 py-0.5 rounded-md border border-[#00F0FF]/30 shadow-[0_0_8px_rgba(0,240,255,0.2)]">
@@ -367,7 +366,7 @@ export default function FilterPanel({
             <button
               key={km}
               onClick={() => setRadiusKm(km)}
-              className={`py-1 rounded-lg border text-center transition-all cursor-pointer ${
+              className={`py-1.5 rounded-lg border text-center transition-all cursor-pointer ${
                 radiusKm === km
                   ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/50 font-bold shadow-[0_0_8px_rgba(0,240,255,0.25)]'
                   : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
@@ -387,13 +386,42 @@ export default function FilterPanel({
           onChange={(e) => setRadiusKm(parseFloat(e.target.value))}
           className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#00F0FF]"
         />
+        <div className="flex justify-between text-[10px] font-mono text-slate-500">
+          <span>1 km (Local)</span>
+          <span>25 km (Regional)</span>
+          <span>50 km (Metro)</span>
+        </div>
       </div>
 
+      {/* Viewport Bounding Box Mode Toggle */}
+      {setViewportMode && (
+        <div className="p-3.5 rounded-xl bg-[#07090E]/70 border border-white/10 flex items-center justify-between font-mono text-xs">
+          <div className="flex items-center gap-2.5">
+            <Scan className="w-4 h-4 text-[#00F0FF]" />
+            <div>
+              <span className="text-slate-200 block text-[11px] font-semibold">VIEWPORT AUTO-FILTER</span>
+              <span className="text-[10px] text-slate-400">Sync venues to current screen bounds</span>
+            </div>
+          </div>
+          <button
+            onClick={() => setViewportMode(!viewportMode)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+              viewportMode 
+                ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 shadow-[0_0_10px_rgba(0,240,255,0.25)]'
+                : 'bg-white/5 text-slate-400 border-white/10 hover:text-white'
+            }`}
+          >
+            {viewportMode ? 'ON' : 'OFF'}
+          </button>
+        </div>
+      )}
+
       {/* Minimum Rating Filter */}
-      <div className="p-3 rounded-xl bg-[#07090E]/50 border border-white/5 space-y-2">
+      <div className="p-3.5 rounded-xl bg-[#07090E]/70 border border-white/10 space-y-2">
         <div className="flex justify-between items-center text-xs">
-          <span className="font-mono text-[11px] text-[#9CA3AF]">
-            MINIMUM RATING
+          <span className="font-mono text-[11px] text-[#9CA3AF] flex items-center gap-1.5 font-bold">
+            <Star className="w-3.5 h-3.5 text-[#F59E0B]" />
+            MINIMUM RATING THRESHOLD
           </span>
           <span className="font-mono font-bold text-xs text-[#F59E0B] bg-[#F59E0B]/10 px-2 py-0.5 rounded-md border border-[#F59E0B]/30 shadow-[0_0_8px_rgba(245,158,11,0.2)]">
             {minRating > 0 ? `★ ${minRating.toFixed(1)}+` : 'ANY'}
@@ -409,36 +437,18 @@ export default function FilterPanel({
           onChange={(e) => setMinRating(parseFloat(e.target.value))}
           className="w-full h-1.5 bg-[#1F2937] rounded-lg appearance-none cursor-pointer accent-[#F59E0B]"
         />
+        <div className="flex justify-between text-[10px] font-mono text-slate-500">
+          <span>0 (All ratings)</span>
+          <span>★ 3.0</span>
+          <span>★ 4.5+</span>
+        </div>
       </div>
 
-      {/* Viewport Bounding Box Mode Toggle */}
-      {setViewportMode && (
-        <div className="p-3 rounded-xl bg-[#07090E]/50 border border-white/5 flex items-center justify-between font-mono text-xs">
-          <div className="flex items-center gap-2">
-            <Scan className="w-3.5 h-3.5 text-[#00F0FF]" />
-            <div>
-              <span className="text-slate-200 block text-[11px] font-semibold">VIEWPORT AUTO-FILTER</span>
-              <span className="text-[10px] text-slate-400">Sync venues to current map bounds</span>
-            </div>
-          </div>
-          <button
-            onClick={() => setViewportMode(!viewportMode)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border ${
-              viewportMode 
-                ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 shadow-[0_0_8px_rgba(0,240,255,0.2)]'
-                : 'bg-white/5 text-slate-400 border-white/10'
-            }`}
-          >
-            {viewportMode ? 'ON' : 'OFF'}
-          </button>
-        </div>
-      )}
-
-      {/* Bottom Command Bar */}
-      <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2">
+      {/* Bottom Command Bar: Demo Focus & Sync OSM */}
+      <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2.5">
         <button
           onClick={onResetLocation}
-          className="flex-1 flex items-center justify-center gap-1.5 text-xs text-[#9CA3AF] hover:text-[#F3F4F6] px-3 py-2 rounded-xl bg-[#111827]/70 hover:bg-[#1F2937] border border-white/10 transition-all cursor-pointer font-mono"
+          className="flex-1 flex items-center justify-center gap-1.5 text-xs text-[#9CA3AF] hover:text-[#F3F4F6] px-3.5 py-2.5 rounded-xl bg-[#111827]/80 hover:bg-[#1F2937] border border-white/10 transition-all cursor-pointer font-mono font-semibold"
         >
           <MapPin className="w-3.5 h-3.5 text-[#00F0FF]" />
           Demo Focus
@@ -447,12 +457,38 @@ export default function FilterPanel({
         <button
           onClick={onFetchLiveOSM}
           disabled={isLiveLoading}
-          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-[#00F0FF] hover:text-white px-3 py-2 rounded-xl bg-[#00F0FF]/10 hover:bg-[#00F0FF]/25 border border-[#00F0FF]/40 shadow-[0_0_12px_rgba(0,240,255,0.15)] hover:shadow-[0_0_20px_rgba(0,240,255,0.3)] transition-all cursor-pointer disabled:opacity-50 font-mono"
+          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-bold text-[#00F0FF] hover:text-white px-3.5 py-2.5 rounded-xl bg-[#00F0FF]/15 hover:bg-[#00F0FF]/25 border border-[#00F0FF]/40 shadow-[0_0_12px_rgba(0,240,255,0.2)] hover:shadow-[0_0_20px_rgba(0,240,255,0.35)] transition-all cursor-pointer disabled:opacity-50 font-mono"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLiveLoading ? 'animate-spin text-[#00F0FF]' : ''}`} />
           {isLiveLoading ? 'Syncing...' : 'Sync OSM'}
         </button>
       </div>
+
+      {/* Switch to Results Button */}
+      {onViewResults && (
+        <button
+          onClick={onViewResults}
+          className="w-full mt-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#00F0FF]/15 to-[#A855F7]/15 hover:from-[#00F0FF]/25 hover:to-[#A855F7]/25 text-[#00F0FF] border border-[#00F0FF]/30 font-mono text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(0,240,255,0.15)]"
+        >
+          <span>Explore {totalResultsCount} Filtered Venues</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-3 p-4 rounded-2xl bg-[#0B0F19]/80 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.5)]">
+      {activeTab === 'filters' && renderFiltersTab()}
+      {activeTab === 'spatial' && renderSpatialTab()}
+      {activeTab === 'all' && (
+        <div className="space-y-6">
+          {renderFiltersTab()}
+          <div className="border-t border-white/10 pt-4">
+            {renderSpatialTab()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

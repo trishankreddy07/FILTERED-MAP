@@ -4,7 +4,7 @@ import {
   TileLayer, 
   Marker, 
   Popup, 
-  Tooltip,
+  Tooltip, 
   Circle, 
   Polyline,
   useMap, 
@@ -66,6 +66,42 @@ const CATEGORY_SVGS = {
 };
 
 const RADIUS_PRESETS = [2, 5, 10, 25, 50];
+
+// Reliable Tile Layer Providers with High Performance CDN & Native Dark Styles
+const TILE_PROVIDERS = {
+  carto_dark: {
+    name: 'CartoDB Dark Matter',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20,
+    className: 'carto-dark-tiles'
+  },
+  cyber: {
+    name: 'Cyber Neon',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20,
+    className: 'carto-cyber-tiles'
+  },
+  day: {
+    name: 'CartoDB Voyager',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20,
+    className: ''
+  },
+  osm: {
+    name: 'Standard OSM',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains: 'abc',
+    maxZoom: 19,
+    className: ''
+  }
+};
 
 // Create Custom Dynamic POI DivIcon with Vector SVG and Priority Z-Index Stacking
 const createCustomIcon = (place, isSelected = false) => {
@@ -255,6 +291,33 @@ const destinationIcon = L.divIcon({
   iconAnchor: [18, 18],
   popupAnchor: [0, -20]
 });
+
+// Container Invalidation Controller: Forces Leaflet to Recalculate Dimensions
+function InvalidateSizeController({ sidebarCollapsed }) {
+  const map = useMap();
+
+  useEffect(() => {
+    // Invalidate size immediately on mount and after layout settles
+    map.invalidateSize();
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 300);
+    const t3 = setTimeout(() => map.invalidateSize(), 600);
+
+    const handleResize = () => {
+      map.invalidateSize();
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [map, sidebarCollapsed]);
+
+  return null;
+}
 
 // Viewport Animation & Auto-Fit Controller
 function MapViewController({ 
@@ -749,43 +812,44 @@ export default function MapView({
   onViewportChange,
   bookmarkedIds,
   onToggleBookmark,
-  onToast
+  onToast,
+  sidebarCollapsed = false
 }) {
   const centerPosition = [userLocation.latitude, userLocation.longitude];
 
   // Interactive Layer Controls State
   const [isClusteringEnabled, setIsClusteringEnabled] = useState(true);
   const [autoFitView, setAutoFitView] = useState(true);
-  const [tileMode, setTileMode] = useState('cyber'); // 'cyber' | 'deepspace' | 'standard'
+  const [tileMode, setTileMode] = useState('carto_dark'); // 'carto_dark' | 'cyber' | 'day' | 'osm'
   const [isHeatmapActive, setIsHeatmapActive] = useState(false);
   const [showLayerPanel, setShowLayerPanel] = useState(false);
 
-  // Tile CSS Filter Mapping
-  const tileFilterStyle = useMemo(() => {
-    if (tileMode === 'deepspace') {
-      return { filter: 'brightness(0.48) invert(1) contrast(3.8) hue-rotate(210deg) saturate(0.2) brightness(0.72)' };
-    }
-    if (tileMode === 'standard') {
-      return { filter: 'brightness(0.85) contrast(1.1)' };
-    }
-    return { filter: 'brightness(0.6) invert(1) contrast(3.4) hue-rotate(200deg) saturate(0.28) brightness(0.78)' };
-  }, [tileMode]);
+  const currentTileConfig = TILE_PROVIDERS[tileMode] || TILE_PROVIDERS.carto_dark;
 
   return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#07090E]">
+    <div 
+      id="map"
+      className="relative w-full h-full min-h-[100vh] rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#07090E]"
+      style={{ height: '100%', width: '100%', minHeight: '100vh', position: 'relative' }}
+    >
       <MapContainer
         center={centerPosition}
         zoom={13}
         scrollWheelZoom={true}
         className="w-full h-full bg-[#07090E]"
+        style={{ height: '100%', width: '100%', minHeight: '100vh', position: 'relative' }}
       >
-        {/* OpenStreetMap with Antigravity Tile Filter */}
+        {/* Container Size Invalidator to prevent blank/unrendered tiles on mount & sidebar toggle */}
+        <InvalidateSizeController sidebarCollapsed={sidebarCollapsed} />
+
+        {/* Reliable High-Performance Dark Tile Layer (CartoDB Dark Matter / Voyager) */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxZoom={19}
-          className="antigravity-custom-tiles"
-          style={tileFilterStyle}
+          key={tileMode}
+          attribution={currentTileConfig.attribution}
+          url={currentTileConfig.url}
+          subdomains={currentTileConfig.subdomains}
+          maxZoom={currentTileConfig.maxZoom}
+          className={currentTileConfig.className}
         />
 
         {/* Viewport Animation & Auto-Fit Controller */}
@@ -1102,32 +1166,35 @@ export default function MapView({
               </span>
               <div className="grid grid-cols-3 gap-1 font-mono text-[10px]">
                 <button
+                  onClick={() => setTileMode('carto_dark')}
+                  className={`py-1 rounded-lg border text-center transition-all cursor-pointer ${
+                    tileMode === 'carto_dark' 
+                      ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 font-bold' 
+                      : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
+                  }`}
+                  title="CartoDB Dark Matter"
+                >
+                  Dark
+                </button>
+                <button
                   onClick={() => setTileMode('cyber')}
                   className={`py-1 rounded-lg border text-center transition-all cursor-pointer ${
                     tileMode === 'cyber' 
                       ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 font-bold' 
                       : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
                   }`}
+                  title="Cyber Neon Layer"
                 >
                   Cyber
                 </button>
                 <button
-                  onClick={() => setTileMode('deepspace')}
+                  onClick={() => setTileMode('day')}
                   className={`py-1 rounded-lg border text-center transition-all cursor-pointer ${
-                    tileMode === 'deepspace' 
+                    tileMode === 'day' 
                       ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 font-bold' 
                       : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
                   }`}
-                >
-                  Deep
-                </button>
-                <button
-                  onClick={() => setTileMode('standard')}
-                  className={`py-1 rounded-lg border text-center transition-all cursor-pointer ${
-                    tileMode === 'standard' 
-                      ? 'bg-[#00F0FF]/20 text-[#00F0FF] border-[#00F0FF]/40 font-bold' 
-                      : 'bg-white/5 text-slate-400 border-white/10 hover:text-slate-200'
-                  }`}
+                  title="CartoDB Voyager Day Surface"
                 >
                   Day
                 </button>
