@@ -103,9 +103,9 @@ const TILE_PROVIDERS = {
   }
 };
 
-// Create Custom Dynamic POI DivIcon with Vector SVG and Priority Z-Index Stacking
+// Create Custom Dynamic POI DivIcon with Vector SVG, Category Badge, Venue Label & Priority Z-Index Stacking
 const createCustomIcon = (place, isSelected = false) => {
-  const category = place.category;
+  const category = place.category || 'Venue';
   const color = CATEGORY_COLORS[category] || '#00F0FF';
   const svg = CATEGORY_SVGS[category] || CATEGORY_SVGS.Hospital;
 
@@ -124,10 +124,10 @@ const createCustomIcon = (place, isSelected = false) => {
     statusBadgeHtml = `
       <span class="status-dot-pulse" style="
         position: absolute;
-        top: -3px;
-        right: -3px;
-        width: 10px;
-        height: 10px;
+        top: -2px;
+        right: -2px;
+        width: 9px;
+        height: 9px;
         background-color: #10B981;
         border: 2px solid #07090E;
         border-radius: 50%;
@@ -138,50 +138,109 @@ const createCustomIcon = (place, isSelected = false) => {
     statusBadgeHtml = `
       <span style="
         position: absolute;
-        bottom: -4px;
-        right: -6px;
+        bottom: -3px;
+        right: -5px;
         background: rgba(11, 15, 25, 0.95);
         border: 1px solid #F59E0B;
         border-radius: 8px;
-        font-size: 9px;
+        font-size: 8px;
         font-family: 'JetBrains Mono', monospace;
         color: #F59E0B;
-        padding: 0 4px;
+        padding: 0 3px;
         font-weight: 700;
-        line-height: 12px;
+        line-height: 11px;
         box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
       ">★${place.rating}</span>
     `;
   }
 
   const ringStyle = isSelected 
-    ? `box-shadow: 0 0 0 4px #00F0FF, 0 0 30px rgba(0, 240, 255, 1); transform: scale(1.22);` 
-    : `box-shadow: 0 0 14px ${color}88, 0 3px 10px rgba(0, 0, 0, 0.85);`;
+    ? `box-shadow: 0 0 0 3px #00F0FF, 0 0 25px rgba(0, 240, 255, 0.95); transform: scale(1.15);` 
+    : `box-shadow: 0 0 12px ${color}88, 0 2px 8px rgba(0, 0, 0, 0.85);`;
+
+  const categoryLabel = (category || 'VENUE').toUpperCase();
+  const venueName = (place.name || 'Venue');
 
   return L.divIcon({
     className: `antigravity-poi-marker ${priorityClass}`,
     html: `
       <div style="
-        position: relative;
-        background: radial-gradient(circle at 35% 35%, ${color}, #07090E 130%);
-        width: 34px;
-        height: 34px;
-        border-radius: 50%;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        color: #ffffff;
-        border: 2px solid rgba(255, 255, 255, 0.9);
-        ${ringStyle}
-        transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+        width: 120px;
+        pointer-events: auto;
+        user-select: none;
       ">
-        ${svg}
-        ${statusBadgeHtml}
+        <!-- TOP: Category Text Badge -->
+        <div style="
+          background: rgba(11, 15, 25, 0.95);
+          border: 1px solid ${color};
+          color: ${color};
+          padding: 1px 6px;
+          border-radius: 10px;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 8.5px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          white-space: nowrap;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.85), 0 0 10px ${color}55;
+          margin-bottom: 3px;
+          display: flex;
+          align-items: center;
+          gap: 3.5px;
+          backdrop-filter: blur(8px);
+        ">
+          <span style="width: 5px; height: 5px; border-radius: 50%; background: ${color}; box-shadow: 0 0 4px ${color};"></span>
+          ${categoryLabel}
+        </div>
+
+        <!-- CENTER: Pin Circle with SVG & Status Badge -->
+        <div style="
+          position: relative;
+          background: radial-gradient(circle at 35% 35%, ${color}, #07090E 130%);
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #ffffff;
+          border: 2px solid rgba(255, 255, 255, 0.9);
+          ${ringStyle}
+          transition: transform 0.2s ease;
+        ">
+          ${svg}
+          ${statusBadgeHtml}
+        </div>
+
+        <!-- BOTTOM: Venue Name Badge -->
+        <div style="
+          background: rgba(7, 9, 14, 0.92);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          color: #F3F4F6;
+          padding: 1px 6px;
+          border-radius: 6px;
+          font-size: 9px;
+          font-weight: 700;
+          white-space: nowrap;
+          max-width: 110px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          margin-top: 3px;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.75);
+          text-align: center;
+          backdrop-filter: blur(8px);
+        ">
+          ${venueName}
+        </div>
       </div>
     `,
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-    popupAnchor: [0, -20]
+    iconSize: [120, 68],
+    iconAnchor: [60, 34],
+    popupAnchor: [0, -36]
   });
 };
 
@@ -640,7 +699,7 @@ function ClusteredLayer({
               click: () => onSelectPlace(place)
             }}
           >
-            <Tooltip direction="top" offset={[0, -20]} opacity={0.95} className="antigravity-tooltip">
+            <Tooltip direction="top" offset={[0, -36]} opacity={0.95} className="antigravity-tooltip">
               <div className="flex items-center gap-1.5 font-mono text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }}></span>
                 <span className="font-bold text-white line-clamp-1">{place.name}</span>
